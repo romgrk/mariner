@@ -1,0 +1,14 @@
+{
+  "name": "nautilus-clone",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "A GNOME Files (nautilus) clone built with node-gtk",
+  "main": "src/main.mjs",
+  "scripts": {
+    "start": "node --import node-gtk/register src/main.mjs"
+  },
+  "dependencies": {
+    "node-gtk": "^3.0.0"
+  }
+}
