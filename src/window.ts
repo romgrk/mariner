@@ -5,96 +5,122 @@ import GLib from 'gi:GLib-2.0'
 import GObject from 'gi:GObject-2.0'
 import Gdk from 'gi:Gdk-4.0'
 
-function boolValue(b) {
+import { Tab } from './tab.ts'
+import { F, fileForPath, fileForUri } from './core/gio.ts'
+import { HOME, locationName, isDirectory, displayName } from './core/format.ts'
+import { ClipboardService } from './services/clipboard-service.ts'
+import { FileOperations } from './services/file-operations.ts'
+import { promptText, confirm, showProperties, aboutDialog } from './ui/dialogs.ts'
+import { createSidebar } from './ui/sidebar.ts'
+import { createToolbar } from './ui/toolbar.ts'
+import type { Prefs, GFile, GFileInfo, Entry, OpError, OpNotify } from './core/types.ts'
+
+const MIN_ZOOM = 32, MAX_ZOOM = 128, ZOOM_STEP = 16
+
+function boolValue(b: boolean): any {
   const v = new GObject.Value()
   v.init(GObject.typeFromName('gboolean'))
   v.setBoolean(b)
   return v
 }
 
-import { Tab } from './tab.mjs'
-import {
-  F, HOME, fileForPath, fileForUri, locationName, isDirectory, displayName,
-} from './util.mjs'
-import * as ops from './ops.mjs'
-import {
-  promptText, confirm, showProperties, aboutDialog,
-} from './ui/dialogs.mjs'
-import { createSidebar } from './ui/sidebar.mjs'
-import { createToolbar } from './ui/toolbar.mjs'
-
-const MIN_ZOOM = 32, MAX_ZOOM = 128, ZOOM_STEP = 16
-
 export class AppWindow {
-  constructor(app, startFile) {
-    this.app = app
-    this.prefs = { showHidden: false, sortKey: 'name', sortDesc: false, viewMode: 'grid', iconSize: 64 }
-    this.tabs = []
-    this._activeTab = null
-    this.clipboard = { files: [], cut: false }
+  app: any
+  prefs: Prefs = { showHidden: false, sortKey: 'name', sortDesc: false, viewMode: 'grid', iconSize: 64 }
+  tabs: Tab[] = []
+  _activeTab: Tab | null = null
+  searching = false
+  clipboard = new ClipboardService()
+  fileOps = new FileOperations()
+  _pasteTarget: GFile | null = null
 
+  window!: any
+  toastOverlay!: any
+  split!: any
+  sidebar!: any
+  toolbar!: any
+  tabView!: any
+  _progressBar!: any
+  _progressLabel!: any
+  _progressRevealer!: any
+  backAction!: any
+  forwardAction!: any
+  upAction!: any
+  sortActions: Record<string, any> = {}
+  sortDescAction!: any
+  hiddenAction!: any
+  searchAction!: any
+
+  constructor(app: any, startFile: GFile) {
+    this.app = app
     this._buildUI()
     this._buildActions()
+    this._wireFileOps()
     this.openTab(startFile)
     this.window.present()
   }
 
-  get activeTab() { return this._activeTab }
+  get activeTab(): Tab | null { return this._activeTab }
 
   /* ---- UI ---- */
-  _buildUI() {
+  _buildUI(): void {
     this.window = new Adw.ApplicationWindow(this.app)
     this.window.setTitle('Files')
     this.window.setDefaultSize(890, 550)
     this.window.addCssClass('view')
 
     this.toastOverlay = new Adw.ToastOverlay()
-    this.split = new Adw.OverlaySplitView({
-      maxSidebarWidth: 240, sidebarWidthFraction: 0.2, showSidebar: true,
-    })
+    this.split = new Adw.OverlaySplitView({ maxSidebarWidth: 240, sidebarWidthFraction: 0.2, showSidebar: true })
 
-    /* Sidebar pane */
-    this.sidebar = createSidebar(file => this.navigate(file))
+    /* Sidebar */
+    this.sidebar = createSidebar((file: GFile) => this.navigate(file))
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
     sidebarHeader.setTitleWidget(new Adw.WindowTitle({ title: 'Files' }))
-    const menuButton = new Gtk.MenuButton({
-      iconName: 'open-menu-symbolic', tooltipText: 'Main Menu', menuModel: this._appMenu(),
-    })
-    sidebarHeader.packEnd(menuButton)
+    sidebarHeader.packEnd(new Gtk.MenuButton({ iconName: 'open-menu-symbolic', tooltipText: 'Main Menu', menuModel: this._appMenu() }))
     sidebarView.addTopBar(sidebarHeader)
     sidebarView.setContent(this.sidebar.widget)
     this.split.setSidebar(sidebarView)
 
-    /* Content pane */
+    /* Content */
     this.toolbar = createToolbar({
-      onNavigate: file => this.navigate(file),
-      onLocationEntry: text => this.openPath(text),
-      onSearchChanged: text => this.activeTab?.setSearch(text),
+      onNavigate: (file: GFile) => this.navigate(file),
+      onLocationEntry: (text: string) => this.openPath(text),
+      onSearchChanged: (text: string) => this.activeTab?.setSearchQuery(text),
     })
     this.tabView = new Adw.TabView()
     this.tabView.on('notify::selected-page', () => this._onTabSwitched())
-    this.tabView.on('close-page', (...a) => this._onClosePage(a[a.length - 1]))
+    this.tabView.on('close-page', (...a: any[]) => this._onClosePage(a[a.length - 1]))
     const tabBar = new Adw.TabBar({ view: this.tabView, autohide: true })
 
     const contentView = new Adw.ToolbarView()
     contentView.addTopBar(this.toolbar.header)
     contentView.addTopBar(tabBar)
     contentView.setContent(this.tabView)
+    contentView.addBottomBar(this._buildProgressBar())
     this.split.setContent(contentView)
 
     this.toastOverlay.setChild(this.split)
     this.window.setContent(this.toastOverlay)
 
-    /* Responsive: collapse the sidebar on narrow windows. */
     try {
       const bp = new Adw.Breakpoint({ condition: Adw.BreakpointCondition.parse('max-width: 682sp') })
       bp.addSetter(this.split, 'collapsed', boolValue(true))
       this.window.addBreakpoint(bp)
-    } catch (e) { /* responsive collapse is optional */ }
+    } catch { /* responsive collapse is optional */ }
   }
 
-  _appMenu() {
+  _buildProgressBar(): any {
+    this._progressBar = new Gtk.ProgressBar({ pulseStep: 0.1, valign: Gtk.Align.CENTER, hexpand: true })
+    this._progressLabel = new Gtk.Label({ cssClasses: ['dim-label'] })
+    const box = new Gtk.Box({ spacing: 12, marginTop: 4, marginBottom: 4, marginStart: 8, marginEnd: 8 })
+    box.append(this._progressLabel)
+    box.append(this._progressBar)
+    this._progressRevealer = new Gtk.Revealer({ child: box, revealChild: false })
+    return this._progressRevealer
+  }
+
+  _appMenu(): any {
     const menu = Gio.Menu.new()
     const s1 = Gio.Menu.new()
     s1.append('New Window', 'win.new-window')
@@ -107,15 +133,31 @@ export class AppWindow {
     return menu
   }
 
+  /* ---- File-operation feedback ---- */
+  _wireFileOps(): void {
+    this.fileOps.on('begin', (p: { title: string }) => {
+      this._progressLabel.setLabel(p.title)
+      this._progressBar.setFraction(0)
+      this._progressRevealer.setRevealChild(true)
+    })
+    this.fileOps.on('progress', () => this._progressBar.pulse())
+    this.fileOps.on('done', () => this._progressRevealer.setRevealChild(false))
+    this.fileOps.on('notify', ({ message }: OpNotify) => this.toast(message))
+    this.fileOps.on('error', ({ title, message }: OpError) => {
+      this._progressRevealer.setRevealChild(false)
+      this.toast(`${title} failed: ${message}`)
+    })
+  }
+
   /* ---- Actions ---- */
-  _buildActions() {
-    const add = (name, cb) => {
+  _buildActions(): void {
+    const add = (name: string, cb: () => void): any => {
       const a = Gio.SimpleAction.new(name, null)
       a.on('activate', cb)
       this.window.addAction(a)
       return a
     }
-    const addToggle = (name, initial, cb) => {
+    const addToggle = (name: string, initial: boolean, cb: (a: any) => void): any => {
       const a = Gio.SimpleAction.newStateful(name, null, GLib.Variant.newBoolean(initial))
       a.on('change-state', () => cb(a))
       this.window.addAction(a)
@@ -142,9 +184,7 @@ export class AppWindow {
     add('zoom-in', () => this._zoom(ZOOM_STEP))
     add('zoom-out', () => this._zoom(-ZOOM_STEP))
 
-    /* Sort radio (mutually-exclusive booleans; never read the signal variant). */
-    this.sortActions = {}
-    for (const key of ['name', 'size', 'type', 'modified']) {
+    for (const key of ['name', 'size', 'type', 'modified'] as const) {
       this.sortActions[key] = addToggle('sort-' + key, key === this.prefs.sortKey, () => {
         this.prefs.sortKey = key
         this._syncSort()
@@ -166,12 +206,11 @@ export class AppWindow {
     this.searchAction = addToggle('search', false, () => this._toggleSearch())
     this.toolbar.searchButton.setActionName('win.search')
 
-    /* Selection operations */
     add('select-all', () => this.activeTab?.view.selectAll())
     add('open', () => this._openSelection())
     add('copy', () => this._clip(false))
     add('cut', () => this._clip(true))
-    add('paste', () => this._paste(this.activeTab?.location))
+    add('paste', () => this._paste())
     add('rename', () => this._rename())
     add('trash', () => this._trash())
     add('delete', () => this._delete())
@@ -179,12 +218,12 @@ export class AppWindow {
     add('empty-trash', () => this._emptyTrash())
   }
 
-  _syncSort() {
+  _syncSort(): void {
     for (const [key, a] of Object.entries(this.sortActions))
       a.setState(GLib.Variant.newBoolean(key === this.prefs.sortKey))
   }
 
-  _zoom(delta) {
+  _zoom(delta: number): void {
     const next = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, this.prefs.iconSize + delta))
     if (next === this.prefs.iconSize) return
     this.prefs.iconSize = next
@@ -192,7 +231,7 @@ export class AppWindow {
   }
 
   /* ---- Tabs / navigation ---- */
-  openTab(file) {
+  openTab(file: GFile): Tab {
     const tab = new Tab(this, file)
     this.tabs.push(tab)
     this._activeTab = tab
@@ -201,35 +240,32 @@ export class AppWindow {
     return tab
   }
 
-  navigate(file) { this.activeTab?.navigate(file) }
+  navigate(file: GFile): void { this.activeTab?.navigate(file) }
 
-  openPath(text) {
+  openPath(text: string): void {
     text = text.trim()
     if (!text) return
-    let file
+    let file: GFile
     if (text.startsWith('~')) file = fileForPath(HOME + text.slice(1))
     else if (/^[a-z]+:\/\//i.test(text)) file = fileForUri(text)
     else if (text.startsWith('/')) file = fileForPath(text)
-    else file = F.getChild(this.activeTab.location, text)
+    else file = F.getChild(this.activeTab!.location, text)
 
-    if (F.queryExists(file, null)) {
-      this.toolbar.showStack('pathbar')
-      this.navigate(file)
-    } else {
-      this.toast('Location not found')
-    }
+    if (F.queryExists(file, null)) { this.toolbar.showStack('pathbar'); this.navigate(file) }
+    else this.toast('Location not found')
   }
 
-  _onTabSwitched() {
+  _onTabSwitched(): void {
     const page = this.tabView.getSelectedPage()
     if (!page) return
     const tab = this.tabs.find(t => t.page === page)
     if (!tab) return
     this._activeTab = tab
+    if (this.searching) this._setSearch(false)
     this.refreshChrome(tab)
   }
 
-  _onClosePage(page) {
+  _onClosePage(page: any): boolean {
     const tab = this.tabs.find(t => t.page === page)
     if (tab) { tab.destroy(); this.tabs = this.tabs.filter(t => t !== tab) }
     this.tabView.closePageFinish(page, true)
@@ -237,11 +273,9 @@ export class AppWindow {
     return true
   }
 
-  onTabChanged(tab) {
-    if (tab === this._activeTab) this.refreshChrome(tab)
-  }
+  onTabChanged(tab: Tab): void { if (tab === this._activeTab) this.refreshChrome(tab) }
 
-  refreshChrome(tab) {
+  refreshChrome(tab: Tab): void {
     this.toolbar.pathbar.setLocation(tab.location)
     this.toolbar.locationEntry.setText(F.getPath(tab.location) || F.getUri(tab.location))
     this.toolbar.setViewIcon(this.prefs.viewMode)
@@ -252,43 +286,30 @@ export class AppWindow {
     this.sidebar.setActive(tab.location)
   }
 
-  /* ---- Item activation + context menu ---- */
-  onItemActivated(tab, info, file) {
+  /* ---- Activation + context menu ---- */
+  onItemActivated(tab: Tab, info: GFileInfo, file: GFile): void {
     if (isDirectory(info)) { tab.navigate(file); return }
-    try {
-      Gio.AppInfo.launchDefaultForUri(F.getUri(file), null)
-    } catch {
-      this.toast(`Could not open “${displayName(info)}”`)
-    }
+    try { Gio.AppInfo.launchDefaultForUri(F.getUri(file), null) }
+    catch { this.toast(`Could not open “${displayName(info)}”`) }
   }
 
-  showContextMenu(tab, widget, x, y, target) {
+  showContextMenu(tab: Tab, widget: any, x: number, y: number, target: Entry | null): void {
     const menu = Gio.Menu.new()
     if (target) {
-      const s1 = Gio.Menu.new()
-      s1.append('Open', 'win.open')
-      menu.appendSection(null, s1)
+      const s1 = Gio.Menu.new(); s1.append('Open', 'win.open'); menu.appendSection(null, s1)
       const s2 = Gio.Menu.new()
-      s2.append('Cut', 'win.cut')
-      s2.append('Copy', 'win.copy')
-      if (isDirectory(target.info) && this.clipboard.files.length)
-        s2.append('Paste Into Folder', 'win.paste')
+      s2.append('Cut', 'win.cut'); s2.append('Copy', 'win.copy')
+      if (isDirectory(target.info) && !this.clipboard.isEmpty) s2.append('Paste Into Folder', 'win.paste')
       menu.appendSection(null, s2)
       const s3 = Gio.Menu.new()
-      s3.append('Rename…', 'win.rename')
-      s3.append('Move to Trash', 'win.trash')
-      s3.append('Delete Permanently', 'win.delete')
+      s3.append('Rename…', 'win.rename'); s3.append('Move to Trash', 'win.trash'); s3.append('Delete Permanently', 'win.delete')
       menu.appendSection(null, s3)
-      const s4 = Gio.Menu.new()
-      s4.append('Properties', 'win.properties')
-      menu.appendSection(null, s4)
+      const s4 = Gio.Menu.new(); s4.append('Properties', 'win.properties'); menu.appendSection(null, s4)
       this._pasteTarget = isDirectory(target.info) ? target.file : tab.location
     } else {
-      const s1 = Gio.Menu.new()
-      s1.append('New Folder…', 'win.new-folder')
-      menu.appendSection(null, s1)
+      const s1 = Gio.Menu.new(); s1.append('New Folder…', 'win.new-folder'); menu.appendSection(null, s1)
       const s2 = Gio.Menu.new()
-      if (this.clipboard.files.length) s2.append('Paste', 'win.paste')
+      if (!this.clipboard.isEmpty) s2.append('Paste', 'win.paste')
       s2.append('Select All', 'win.select-all')
       menu.appendSection(null, s2)
       this._pasteTarget = tab.location
@@ -307,111 +328,91 @@ export class AppWindow {
   }
 
   /* ---- Operations ---- */
-  _selected() { return this.activeTab ? this.activeTab.view.getSelected() : [] }
-  _selectedFiles() { return this._selected().map(s => s.file) }
+  _selected(): Entry[] { return this.activeTab ? this.activeTab.view.getSelected() : [] }
+  _selectedFiles(): GFile[] { return this._selected().map(s => s.file) }
 
-  async _newFolder() {
+  async _newFolder(): Promise<void> {
     if (!this.activeTab) return
-    const name = await promptText(this.window, {
-      heading: 'New Folder', value: 'New Folder', okLabel: 'Create', selectBasename: true,
-    })
-    if (!name) return
-    try { ops.newFolder(this.activeTab.location, name) }
-    catch (e) { this.toast('Could not create folder') }
+    const name = await promptText(this.window, { heading: 'New Folder', value: 'New Folder', okLabel: 'Create', selectBasename: true })
+    if (name) this.fileOps.newFolder(this.activeTab.location, name)
   }
 
-  _openSelection() {
+  _openSelection(): void {
     const sel = this._selected()
-    if (sel[0]) this.onItemActivated(this.activeTab, sel[0].info, sel[0].file)
+    if (sel[0]) this.onItemActivated(this.activeTab!, sel[0].info, sel[0].file)
   }
 
-  _clip(cut) {
+  _clip(cut: boolean): void {
     const files = this._selectedFiles()
     if (!files.length) return
-    this.clipboard = { files, cut }
+    this.clipboard.set(files, cut)
     this.toast(`${files.length} item${files.length > 1 ? 's' : ''} ${cut ? 'cut' : 'copied'}`)
   }
 
-  _paste(destDir) {
-    const dest = this._pasteTarget || destDir
-    if (!dest || !this.clipboard.files.length) return
-    try {
-      if (this.clipboard.cut) {
-        ops.moveInto(this.clipboard.files, dest)
-        this.clipboard = { files: [], cut: false }
-      } else {
-        ops.copyInto(this.clipboard.files, dest)
-      }
-    } catch (e) { this.toast('Paste failed') }
+  _paste(): void {
+    const dest = this._pasteTarget || this.activeTab?.location
+    if (!dest || this.clipboard.isEmpty) return
+    if (this.clipboard.cut) { this.fileOps.move(this.clipboard.files, dest); this.clipboard.clear() }
+    else this.fileOps.copy(this.clipboard.files, dest)
   }
 
-  async _rename() {
+  async _rename(): Promise<void> {
     const sel = this._selected()
     if (sel.length !== 1) return
-    const newName = await promptText(this.window, {
-      heading: 'Rename', value: displayName(sel[0].info), okLabel: 'Rename', selectBasename: true,
-    })
-    if (!newName || newName === displayName(sel[0].info)) return
-    try { ops.rename(sel[0].file, newName) }
-    catch (e) { this.toast('Could not rename') }
+    const current = displayName(sel[0].info)
+    const name = await promptText(this.window, { heading: 'Rename', value: current, okLabel: 'Rename', selectBasename: true })
+    if (name && name !== current) this.fileOps.rename(sel[0].file, name)
   }
 
-  async _trash() {
+  _trash(): void {
     const files = this._selectedFiles()
-    if (!files.length) return
-    try {
-      const n = ops.trash(files)
-      this.toast(`Moved ${n} item${n > 1 ? 's' : ''} to Trash`)
-    } catch (e) { this.toast('Could not move to Trash') }
+    if (files.length) this.fileOps.trash(files)
   }
 
-  async _delete() {
+  async _delete(): Promise<void> {
     const files = this._selectedFiles()
     if (!files.length) return
     const ok = await confirm(this.window, {
       heading: `Permanently delete ${files.length} item${files.length > 1 ? 's' : ''}?`,
       body: 'This action cannot be undone.', okLabel: 'Delete',
     })
-    if (!ok) return
-    try { ops.deletePermanently(files) }
-    catch (e) { this.toast('Could not delete') }
+    if (ok) this.fileOps.deletePermanently(files)
   }
 
-  _properties() {
+  _properties(): void {
     const sel = this._selected()
     if (sel[0]) showProperties(this.window, sel[0].info, sel[0].file)
   }
 
-  async _emptyTrash() {
+  async _emptyTrash(): Promise<void> {
     const ok = await confirm(this.window, {
-      heading: 'Empty all items from Trash?',
-      body: 'All items will be permanently deleted.', okLabel: 'Empty Trash',
+      heading: 'Empty all items from Trash?', body: 'All items will be permanently deleted.', okLabel: 'Empty Trash',
     })
-    if (!ok) return
-    try { ops.emptyTrash() } catch { this.toast('Could not empty Trash') }
+    if (ok) this.fileOps.emptyTrash()
   }
 
   /* ---- Search / location ---- */
-  _showLocationEntry() {
+  _showLocationEntry(): void {
     this.toolbar.showStack('location')
     this.toolbar.locationEntry.grabFocus()
     this.toolbar.locationEntry.selectRegion(0, -1)
   }
 
-  _toggleSearch() {
-    this.searching = !this.searching
-    this.searchAction.setState(GLib.Variant.newBoolean(this.searching))
-    if (this.searching) {
+  _toggleSearch(): void { this._setSearch(!this.searching) }
+
+  _setSearch(on: boolean): void {
+    this.searching = on
+    this.searchAction.setState(GLib.Variant.newBoolean(on))
+    if (on) {
       this.toolbar.showStack('search')
       this.toolbar.searchEntry.grabFocus()
+      this.activeTab?.beginSearch()
     } else {
       this.toolbar.showStack('pathbar')
       this.toolbar.searchEntry.setText('')
-      this.activeTab?.setSearch('')
+      this.activeTab?.endSearch()
     }
   }
 
-  toast(text) {
-    this.toastOverlay.addToast(new Adw.Toast({ title: text }))
-  }
+  toast(text: string): void { this.toastOverlay.addToast(new Adw.Toast({ title: text })) }
 }

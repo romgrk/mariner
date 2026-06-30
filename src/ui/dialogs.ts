@@ -1,12 +1,22 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
+import { F } from '../core/gio.ts'
 import {
-  F, displayName, formatType, formatSize, formatModified, isDirectory,
-} from '../util.mjs'
+  displayName, formatType, formatSize, formatModified, isDirectory,
+} from '../core/format.ts'
+import type { GFile, GFileInfo } from '../core/types.ts'
+
+interface PromptOptions {
+  heading: string
+  body?: string
+  value?: string
+  okLabel?: string
+  selectBasename?: boolean
+}
 
 /* Text prompt (new folder / rename). Resolves to the string, or null on cancel. */
-export function promptText(parent, { heading, body, value = '', okLabel = 'OK', selectBasename = false }) {
-  return new Promise(resolve => {
+export function promptText(parent: any, { heading, body, value = '', okLabel = 'OK', selectBasename = false }: PromptOptions): Promise<string | null> {
+  return new Promise<string | null>(resolve => {
     const dialog = new Adw.AlertDialog(heading, body || null)
     const entry = new Gtk.Entry({ text: value, activatesDefault: true, hexpand: true })
     dialog.setExtraChild(entry)
@@ -17,12 +27,12 @@ export function promptText(parent, { heading, body, value = '', okLabel = 'OK', 
     dialog.setCloseResponse('cancel')
 
     let done = false
-    const finish = id => {
+    const finish = (id: string) => {
       if (done) return
       done = true
       resolve(id === 'ok' ? entry.getText().trim() || null : null)
     }
-    dialog.on('response', (...a) => finish(a[a.length - 1]))
+    dialog.on('response', (...a: any[]) => finish(a[a.length - 1]))
     dialog.present(parent)
 
     entry.grabFocus()
@@ -34,21 +44,28 @@ export function promptText(parent, { heading, body, value = '', okLabel = 'OK', 
   })
 }
 
+interface ConfirmOptions {
+  heading: string
+  body?: string
+  okLabel?: string
+  destructive?: boolean
+}
+
 /* Yes/no confirmation. Resolves true if confirmed. */
-export function confirm(parent, { heading, body, okLabel = 'Delete', destructive = true }) {
-  return new Promise(resolve => {
+export function confirm(parent: any, { heading, body, okLabel = 'Delete', destructive = true }: ConfirmOptions): Promise<boolean> {
+  return new Promise<boolean>(resolve => {
     const d = new Adw.AlertDialog(heading, body || null)
     d.addResponse('cancel', 'Cancel')
     d.addResponse('ok', okLabel)
     if (destructive) d.setResponseAppearance('ok', Adw.ResponseAppearance.DESTRUCTIVE)
     d.setDefaultResponse('cancel')
     d.setCloseResponse('cancel')
-    d.on('response', (...a) => resolve(a[a.length - 1] === 'ok'))
+    d.on('response', (...a: any[]) => resolve(a[a.length - 1] === 'ok'))
     d.present(parent)
   })
 }
 
-function permString(info) {
+function permString(info: GFileInfo): string {
   const canWrite = info.getAttributeBoolean('access::can-write')
   const canExec = info.getAttributeBoolean('access::can-execute')
   let s = canWrite ? 'Read & Write' : 'Read-only'
@@ -56,7 +73,7 @@ function permString(info) {
   return s
 }
 
-export function showProperties(parent, info, file) {
+export function showProperties(parent: any, info: GFileInfo, file: GFile): void {
   const dialog = new Adw.Dialog()
   dialog.setTitle('Properties')
   dialog.setContentWidth(440)
@@ -66,7 +83,7 @@ export function showProperties(parent, info, file) {
 
   const page = new Adw.PreferencesPage()
   const group = new Adw.PreferencesGroup()
-  const row = (title, subtitle) => {
+  const row = (title: string, subtitle: string) => {
     const r = new Adw.ActionRow({ title, subtitle: String(subtitle || '—') })
     r.addCssClass('property')
     group.add(r)
@@ -85,7 +102,7 @@ export function showProperties(parent, info, file) {
   dialog.present(parent)
 }
 
-export function aboutDialog(parent) {
+export function aboutDialog(parent: any): void {
   const about = new Adw.AboutDialog({
     applicationName: 'Files',
     applicationIcon: 'system-file-manager',

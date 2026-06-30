@@ -1,17 +1,24 @@
 import Gtk from 'gi:Gtk-4.0'
-import { F, HOME, locationName } from '../util.mjs'
+import { F } from '../core/gio.ts'
+import { HOME, locationName } from '../core/format.ts'
+import type { GFile } from '../core/types.ts'
+
+export interface PathBar {
+  widget: any
+  setLocation: (file: GFile) => void
+}
 
 /* Breadcrumb path bar. onNavigate(file) is called when a crumb is clicked. */
-export function createPathBar(onNavigate) {
+export function createPathBar(onNavigate: (file: GFile) => void): PathBar {
   const box = new Gtk.Box({ spacing: 0, valign: Gtk.Align.CENTER })
   box.addCssClass('linked')
 
-  function clear() {
+  function clear(): void {
     let c
     while ((c = box.getFirstChild()) !== null) box.remove(c)
   }
 
-  function crumb(file, label, isCurrent) {
+  function crumb(file: GFile, label: string, isCurrent: boolean): void {
     const button = new Gtk.Button({ label })
     button.addCssClass('flat')
     if (isCurrent) button.addCssClass('current-crumb')
@@ -19,14 +26,14 @@ export function createPathBar(onNavigate) {
     box.append(button)
   }
 
-  function setLocation(file) {
+  function setLocation(file: GFile): void {
     clear()
     const path = F.getPath(file)
     if (!path) { crumb(file, locationName(file), true); return }
 
     /* Build ancestor chain (root → current). */
-    const chain = []
-    let f = file
+    const chain: GFile[] = []
+    let f: GFile | null = file
     while (f) { chain.unshift(f); f = F.getParent(f) }
 
     /* Collapse everything above Home into a single "Home" crumb. */

@@ -3,7 +3,10 @@
 GTK4 file manager in node-gtk, UI as close to GNOME Files as possible.
 Closeness is free: we drive the **same** Gtk4 + libadwaita widgets nautilus does.
 
-> **Status:** P0 + P1 implemented and running (see README). P2/P3 remain.
+> **Status:** P0 + P1 done, plus a TypeScript + decoupled-service-layer rewrite
+> (async/incremental directory listing, out-of-process streaming search with
+> loading/empty/error states, time-sliced file operations). See README for the
+> architecture. P2/P3 remain.
 
 ## Stack
 - node-gtk (ESM, `node --import node-gtk/register src/main.mjs`)

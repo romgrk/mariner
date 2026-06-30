@@ -1,11 +1,29 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import Gio from 'gi:Gio-2.0'
-import { createPathBar } from './pathbar.mjs'
+import { createPathBar } from './pathbar.ts'
+import type { PathBar } from './pathbar.ts'
+import type { GFile, ViewMode } from '../core/types.ts'
+
+export interface ToolbarHandlers {
+  onNavigate: (file: GFile) => void
+  onLocationEntry: (text: string) => void
+  onSearchChanged: (text: string) => void
+}
+
+export interface Toolbar {
+  header: any
+  pathbar: PathBar
+  locationEntry: any
+  searchEntry: any
+  searchButton: any
+  showStack: (name: string) => void
+  setViewIcon: (mode: ViewMode) => void
+}
 
 /* Content-area header bar: history, breadcrumb/location/search stack, view
  * controls, new-folder. Buttons drive win.* actions defined by the window. */
-export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }) {
+export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }: ToolbarHandlers): Toolbar {
   const header = new Adw.HeaderBar()
 
   /* History controls */
@@ -36,9 +54,7 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }) 
   titleStack.addNamed(locationBox, 'location')
   titleStack.addNamed(searchEntry, 'search')
 
-  const searchButton = new Gtk.ToggleButton({
-    iconName: 'edit-find-symbolic', tooltipText: 'Search Current Folder',
-  })
+  const searchButton = new Gtk.ToggleButton({ iconName: 'edit-find-symbolic', tooltipText: 'Search Current Folder' })
 
   const titleBox = new Gtk.Box({ spacing: 6, halign: Gtk.Align.CENTER })
   titleBox.append(titleStack)
@@ -46,45 +62,36 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }) 
   header.setTitleWidget(titleBox)
 
   /* End: view controls + new folder */
-  const viewMenu = buildViewMenu()
   const viewButton = new Adw.SplitButton({
-    iconName: 'view-grid-symbolic',
-    menuModel: viewMenu,
-    tooltipText: 'View Options',
+    iconName: 'view-grid-symbolic', menuModel: buildViewMenu(), tooltipText: 'View Options',
   })
-  viewButton.on('clicked', () => header.getRootWindow?.())
   viewButton.setActionName('win.toggle-view')
 
-  const newFolderButton = iconButton('folder-new-symbolic', 'New Folder', 'win.new-folder')
-
   header.packEnd(viewButton)
-  header.packEnd(newFolderButton)
+  header.packEnd(iconButton('folder-new-symbolic', 'New Folder', 'win.new-folder'))
 
-  function showStack(name) { titleStack.setVisibleChildName(name) }
-  function setViewIcon(mode) {
+  function showStack(name: string): void { titleStack.setVisibleChildName(name) }
+  function setViewIcon(mode: ViewMode): void {
     /* Show the icon for the mode you'd switch TO. */
     viewButton.setIconName(mode === 'grid' ? 'view-list-symbolic' : 'view-grid-symbolic')
   }
 
-  return {
-    header, pathbar, locationEntry, searchEntry, searchButton,
-    showStack, setViewIcon,
-  }
+  return { header, pathbar, locationEntry, searchEntry, searchButton, showStack, setViewIcon }
 }
 
-function iconButton(iconName, tooltip, actionName) {
+function iconButton(iconName: string, tooltip: string, actionName: string | null): any {
   const b = new Gtk.Button({ iconName, tooltipText: tooltip })
   if (actionName) b.setActionName(actionName)
   return b
 }
 
-function wrapCenter(child) {
+function wrapCenter(child: any): any {
   const b = new Gtk.Box({ halign: Gtk.Align.CENTER, valign: Gtk.Align.CENTER })
   b.append(child)
   return b
 }
 
-function buildViewMenu() {
+function buildViewMenu(): any {
   const menu = Gio.Menu.new()
 
   const sort = Gio.Menu.new()

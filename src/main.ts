@@ -1,14 +1,15 @@
 import Adw from 'gi:Adw-1'
 import GLib from 'gi:GLib-2.0'
-import { AppWindow } from './window.mjs'
-import { fileForPath, HOME } from './util.mjs'
+import { AppWindow } from './window.ts'
+import { fileForPath } from './core/gio.ts'
+import { HOME } from './core/format.ts'
 
 /* Under node-gtk ESM, app.run() returns immediately; an explicit GLib.MainLoop
  * pumps the GLib loop, and is quit when the last window is removed. */
 const loop = GLib.MainLoop.new(null, false)
 const app = new Adw.Application('com.github.nodegtk.nautilusclone', 0)
 
-const ACCELS = {
+const ACCELS: Record<string, string[]> = {
   'win.back': ['<alt>Left'],
   'win.forward': ['<alt>Right'],
   'win.up': ['<alt>Up'],

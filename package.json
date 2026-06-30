@@ -3,12 +3,17 @@
   "version": "0.0.1",
   "private": true,
   "type": "module",
-  "description": "A GNOME Files (nautilus) clone built with node-gtk",
-  "main": "src/main.mjs",
+  "description": "A GNOME Files (nautilus) clone built with node-gtk + TypeScript",
+  "main": "src/main.ts",
   "scripts": {
-    "start": "node --import node-gtk/register src/main.mjs"
+    "start": "node --import node-gtk/register src/main.ts",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "node-gtk": "^3.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.8.0"
   }
 }
