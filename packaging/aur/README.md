@@ -76,11 +76,10 @@ Everything else (depends, makedepends, build, package) is identical.
 
 - **Source build, not a prebuilt.** `node-gtk`'s `install` script is
   `node-pre-gyp install --fallback-to-build`, which *prefers* a prebuilt binary
-  from its S3 host. Those prebuilts only exist for a handful of Node ABIs (at the
-  time of writing: Node 20/22/24) and never for Arch's rolling `nodejs`, so the
-  fallback would compile anyway. The PKGBUILD forces this with
-  `npm_config_build_from_source=true` — no opaque binary is downloaded; the addon
-  is compiled against the system libraries.
+  from its S3 host. As of node-gtk 4.0.0 those prebuilts do include Node 26
+  (matching Arch's current `nodejs`), but the PKGBUILD still forces a source
+  build with `npm_config_build_from_source=true` so the addon is compiled against
+  the exact system GTK/glib rather than an opaque downloaded binary.
 - **Native ABI.** The compiled `.node` is tied to the exact Node ABI it was built
   against, and the launcher pins `/usr/bin/node` at runtime. Build in a clean
   chroot (e.g. `makechrootpkg`) or with the system `nodejs` on `PATH` so the two

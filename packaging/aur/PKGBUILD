@@ -7,12 +7,12 @@ pkgdesc="A GNOME Files clone built with node-gtk and TypeScript (GTK4 + libadwai
 arch=('x86_64')
 url="https://github.com/romgrk/mariner"
 license=('MIT')
-# Runtime: node-gtk's native addon uses Nan/old-V8 APIs (v8::DEFAULT,
-# 2-arg GetAlignedPointerFromInternalField) that were REMOVED in Node 24+, so it
-# neither builds nor runs on Arch's rolling `nodejs` (currently 26). Pin the Node
-# 22 LTS (jod), which also satisfies the >=22.18 needed for unflagged TypeScript
-# stripping. gtk4/libadwaita supply the typelibs; gobject-introspection-runtime
-# supplies libgirepository, which the addon links against (not pulled in by gtk4).
+# Runtime: node-gtk 4.0.0 ported its native addon to the V8-14 internal-field
+# API, so it builds and runs on current Node again — Arch's rolling `nodejs`
+# (26) is fine. nodejs>=22.18 is the floor (also what unflagged TypeScript
+# stripping needs). gtk4/libadwaita supply the typelibs; gobject-introspection-
+# runtime supplies libgirepository, which the addon links against (not pulled
+# in by gtk4).
 # gvfs backs the trash:// view, volume monitoring, mounting and eject in the
 # places sidebar; the local file operations work without it, the sidebar does not.
 # ripgrep (content search), the archive tools unzip/zip (.zip & .jar), 7zip (.7z,
@@ -21,7 +21,7 @@ license=('MIT')
 # are hard deps so a fresh install is full-featured out of the box; the app
 # degrades gracefully without them, but we ship them rather than via optdepends.
 # (tar is not listed — it is part of the mandatory `base` group.)
-depends=('nodejs-lts-jod' 'gtk4' 'libadwaita' 'gobject-introspection-runtime' 'gvfs'
+depends=('nodejs>=22.18' 'gtk4' 'libadwaita' 'gobject-introspection-runtime' 'gvfs'
          'ripgrep' 'unzip' 'zip' '7zip' 'unarchiver' 'xdg-user-dirs')
 # Build: compiles the node-gtk native addon from source against system GTK.
 makedepends=('git' 'npm' 'node-gyp' 'python' 'pkgconf' 'gobject-introspection' 'cairo' 'glib2')
@@ -46,7 +46,7 @@ pkgver() {
 
 build() {
   cd "$srcdir/$_pkgname"
-  # Install node-gtk@^3.0.0 from the npm registry (npm ignores the dev-only
+  # Install node-gtk@^4.0.0 from the npm registry (npm ignores the dev-only
   # pnpm-workspace.yaml link to ../node-gtk) and compile its native addon
   # against the system GTK rather than downloading a prebuilt binary — the
   # prebuilts do not track Arch's rolling Node ABI.
