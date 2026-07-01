@@ -134,6 +134,25 @@ list columns — works just like GNOME Files.
 
 ---
 
+## Not yet supported
+
+Mariner is young, and a few things GNOME Files does haven't landed yet:
+
+- **Network & remote locations** — no SMB/Windows shares, SFTP/SSH, FTP, WebDAV,
+  or NFS; no MTP phones or cloud accounts; and no *Connect to Server* or *Other
+  Locations* browser. Mariner sees only local disks and already-mounted volumes.
+- **Editing bookmarks** — your existing GNOME Files bookmarks show up in the
+  sidebar, but adding, removing, or reordering them from inside Mariner isn't
+  wired up yet.
+- **Starred files** — there's no star/unstar action and no Starred view.
+- **Editing permissions** — the Properties dialog shows an item's permissions but
+  can't yet change them (no read/write/execute toggles).
+
+These are on the roadmap rather than out of scope — see
+[CONTRIBUTING.md](CONTRIBUTING.md) if you'd like to help.
+
+---
+
 ## Install
 
 ### Arch Linux (AUR)

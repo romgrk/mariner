@@ -63,12 +63,12 @@ large copies never block the UI, reporting progress in a bottom bar.
 
 ## Status & roadmap
 
-P0 + P1 + the async-architecture pass complete: grid/list browsing, breadcrumb +
-location entry, tabs with per-tab history, places sidebar, live refresh,
-context-menu operations (new folder, rename, copy/cut/paste, trash, delete,
-properties), sort, show-hidden, zoom, recursive out-of-process search, and proper
-loading/empty/error states. See [PLAN.md](PLAN.md) for the P2/P3 roadmap and
-[HANDOFF.md](HANDOFF.md) for detailed implementation notes.
+GNOME Files parity plus net-new features are in: grid/list browsing, tabs, dual
+pane, breadcrumb + location entry, places sidebar, live refresh, context-menu
+operations, sort/show-hidden/zoom, recursive out-of-process + ripgrep content
+search, Quick Look, command palette, and a disk-usage sunburst. See
+[PLAN.md](PLAN.md) for the architecture, node-gtk gotchas, implementation notes,
+and open ideas.
 
 ## node-gtk notes (gotchas hit while building)
 
