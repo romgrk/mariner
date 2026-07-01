@@ -38,6 +38,7 @@ export class Tab {
   get canGoForward(): boolean { return this.activePane.canGoForward }
   get parent(): GFile | null { return this.activePane.parent }
   get isShowingSearch(): boolean { return this.activePane.isShowingSearch }
+  get searching(): boolean { return this.activePane.searching }
   get isSplit(): boolean { return this.panes.length > 1 }
 
   navigate(file: GFile, push = true): void { this.activePane.navigate(file, push) }

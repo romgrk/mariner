@@ -75,16 +75,11 @@ export function createToolbar({ onNavigate, onOpenTab, onOpenWindow, onPropertie
 
   const searchEntry = new Gtk.SearchEntry({ hexpand: true })
   searchEntry.on('search-changed', () => onSearchChanged(searchEntry.getText()))
-  /* Escape cancels search; losing focus while empty exits to the pathbar
-   * (unless focus went to the filter popover). */
+  /* Escape exits search (GtkSearchEntry::stop-search). Otherwise search stays up
+   * until the user navigates elsewhere — the window drops it on location change.
+   * Blur deliberately does NOT cancel, so opening the filter popover is safe. */
   searchEntry.on('stop-search', () => onSearchExit())
   const filterButton = createSearchFilterButton(onSearchFilter)
-  const searchFocus = new Gtk.EventControllerFocus()
-  searchFocus.on('leave', () => GLib.idleAdd(GLib.PRIORITY_DEFAULT_IDLE, () => {
-    if (!searchEntry.getText() && !filterButton.widget.getActive()) onSearchExit()
-    return false
-  }))
-  searchEntry.addController(searchFocus)
   const searchBox = new Gtk.Box()
   searchBox.addCssClass('linked')
   searchBox.append(searchEntry)

@@ -27,6 +27,7 @@ export class Pane {
   searching = false
   searchQuery = ''
   searchFilter: SearchFilter = { category: 'all', since: 0, contents: false }
+  _lastContentMode = false
 
   /* Injected by the container (Tab). Defaults are inert. */
   onActivate: (info: GFileInfo, file: GFile) => void = () => {}
@@ -153,7 +154,10 @@ export class Pane {
   beginSearch(): void { this.searching = true; this.searchQuery = ''; this._runSearch() }
   setSearchQuery(q: string): void { if (!this.searching) return; this.searchQuery = q; this._runSearch() }
   setSearchFilter(f: SearchFilter): void { this.searchFilter = f; if (this.searching) this._runSearch() }
-  endSearch(): void { if (!this.searching) return; this._exitSearch(); this.dir.load(this.location) }
+  /* prepareForNavigation so the folder reload swaps in cleanly and moves focus
+   * into the file view once its rows appear — exiting search (Escape / toggle
+   * off) should land on the panel, not the header. */
+  endSearch(): void { if (!this.searching) return; this._exitSearch(); this.view.prepareForNavigation(); this.dir.load(this.location) }
 
   _exitSearch(): void { this.searching = false; this.searchQuery = ''; this.search.cancel() }
 
@@ -164,6 +168,12 @@ export class Pane {
        * at once; the search then reconciles (adds deeper matches, drops any
        * over-kept rows) without flicker. Content matches can't be predicted
        * from names, so that mode keeps the plain merge. */
+      const contentMode = !!(this.searchQuery && this.searchFilter.contents)
+      /* Flipping name↔content produces an unrelated result set, so drop the old
+       * mode's rows now rather than letting them linger while the new (possibly
+       * slow, ripgrep) search streams in. */
+      if (contentMode !== this._lastContentMode) this.view.clearResults()
+      this._lastContentMode = contentMode
       if (this.searchQuery && !this.searchFilter.contents) this.view.narrowByName(this.searchQuery)
       this.search.search(this.location, this.searchQuery, { showHidden: this.prefs.showHidden, filter: this.searchFilter })
     } else {

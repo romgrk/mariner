@@ -34,7 +34,7 @@ export function createSearchFilterButton(onChange: (f: SearchFilter) => void): S
 
   const popover = new Gtk.Popover()
   popover.setChild(grid)
-  const widget = new Gtk.MenuButton({ iconName: 'funnel-symbolic', tooltipText: 'Filter Results', popover })
+  const widget = new Gtk.MenuButton({ iconName: 'view-more-symbolic', tooltipText: 'Filter Results', popover })
 
   return {
     widget, filter,

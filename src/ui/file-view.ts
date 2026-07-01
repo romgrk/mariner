@@ -225,6 +225,15 @@ export class FileView {
     this._removeWhere(info => !displayName(info).toLowerCase().includes(q))
   }
 
+  /* Drop every shown row now. Used when the search mode flips (name ↔ content):
+   * the two yield unrelated result sets, so the previous mode's matches would
+   * otherwise stay visible while the new search streams in. The following
+   * beginLoading snapshots the now-empty store, so nothing stale can survive. */
+  clearResults(): void {
+    this.all = []
+    this.store.removeAll()
+  }
+
   /* Remove every row for which `shouldRemove` is true, coalescing contiguous
    * runs into one splice each (one items-changed) so bulk removals stay cheap. */
   _removeWhere(shouldRemove: (info: any) => boolean): void {

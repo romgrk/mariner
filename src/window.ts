@@ -579,6 +579,11 @@ export class AppWindow {
   }
 
   refreshChrome(tab: Tab): void {
+    /* Navigating away (breadcrumb, sidebar, back/forward, opening a folder, …)
+     * exits search: the pane already dropped its search on navigate, so here we
+     * just tear down the search chrome. endSearch() is then a no-op, so the new
+     * location that navigation just loaded is left intact. */
+    if (this.searching && !tab.searching) this._setSearch(false)
     this.toolbar.pathbar.setLocation(tab.location)
     this.toolbar.locationEntry.setText(F.getPath(tab.location) || F.getUri(tab.location))
     this.toolbar.setViewIcon(this.prefs.viewMode)
