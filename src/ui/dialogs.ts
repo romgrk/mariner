@@ -19,7 +19,7 @@ interface PromptOptions {
 /* Text prompt (new folder / rename). Resolves to the string, or null on cancel. */
 export function promptText(parent: any, { heading, body, value = '', okLabel = 'OK', selectBasename = false }: PromptOptions): Promise<string | null> {
   return new Promise<string | null>(resolve => {
-    const dialog = new Adw.AlertDialog(heading, body || null)
+    const dialog = new Adw.AlertDialog({ heading, body: body ?? '' })
     const entry = new Gtk.Entry({ text: value, activatesDefault: true, hexpand: true })
     dialog.setExtraChild(entry)
     dialog.addResponse('cancel', 'Cancel')
@@ -56,7 +56,7 @@ interface ConfirmOptions {
 /* Yes/no confirmation. Resolves true if confirmed. */
 export function confirm(parent: any, { heading, body, okLabel = 'Delete', destructive = true }: ConfirmOptions): Promise<boolean> {
   return new Promise<boolean>(resolve => {
-    const d = new Adw.AlertDialog(heading, body || null)
+    const d = new Adw.AlertDialog({ heading, body: body ?? '' })
     d.addResponse('cancel', 'Cancel')
     d.addResponse('ok', okLabel)
     if (destructive) d.setResponseAppearance('ok', Adw.ResponseAppearance.DESTRUCTIVE)

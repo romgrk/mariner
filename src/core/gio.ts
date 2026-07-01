@@ -18,7 +18,9 @@ export const ATTRS = [
   'standard::icon', 'standard::symbolic-icon', 'standard::type',
   'standard::size', 'standard::content-type', 'standard::is-hidden',
   'standard::is-backup', 'standard::is-symlink', 'standard::target-uri',
-  'time::modified', 'access::can-write', 'access::can-execute',
+  'time::modified', 'time::access', 'time::created',
+  'owner::user', 'owner::group', 'unix::mode',
+  'access::can-write', 'access::can-execute',
   'trash::orig-path', 'trash::deletion-date',
 ].join(',')
 

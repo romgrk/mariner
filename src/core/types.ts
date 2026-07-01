@@ -34,12 +34,23 @@ export interface SearchFilter {
   contents?: boolean
 }
 
+/* One list-view column's state: which column (by id, see core/columns.ts) and
+ * whether it's shown. Ordered lists of these drive both the ColumnView and the
+ * column chooser — order is significant. The Name column is implicit (always
+ * shown first) and never appears here. */
+export interface ColumnConfig {
+  id: string
+  visible: boolean
+}
+
 export interface Prefs {
   showHidden: boolean
   sortKey: SortKey
   sortDesc: boolean
   viewMode: ViewMode
   iconSize: number
+  /* Ordered list-view columns (excluding the always-first Name column). */
+  columns: ColumnConfig[]
 }
 
 /* What the FileView needs to filter + order a dataset. */

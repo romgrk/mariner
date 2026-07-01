@@ -7,11 +7,12 @@ import { FILE_INFO_TYPE, uriOf } from '../core/gio.ts'
 import { displayName, isDirectory } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
-import { gridFactory, nameColumn, nameCellFactory, metaColumn, COLUMNS } from './cells.ts'
+import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
 import type { CellContext } from './cells.ts'
+import { COLUMN_DEF, defaultColumnConfig } from '../core/columns.ts'
 import { FloatingBar } from './floating-bar.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
-import type { Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
+import type { ColumnConfig, Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
 
 type ActivateHandler = (info: GFileInfo, file: GFile) => void
 type ContextMenuHandler = (widget: any, x: number, y: number, target: Entry | null) => void
@@ -19,6 +20,18 @@ type ContextMenuHandler = (widget: any, x: number, y: number, target: Entry | nu
 /* Only fall back to the loading spinner if a load is slower than this; faster
  * loads (the common case) swap their results in without ever showing it. */
 const SPINNER_DELAY = 300
+
+/* Chord modifiers we discriminate on (lock/scroll bits are ignored). */
+const MODIFIER_MASK = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
+  | Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.SUPER_MASK
+
+/* Alt + h/j/k/l → arrow-key directions for cursor movement (vim-inspired). */
+const VIM_DIRS: Record<number, 'left' | 'down' | 'up' | 'right'> = {
+  [Gdk.KEY_h]: 'left',
+  [Gdk.KEY_j]: 'down',
+  [Gdk.KEY_k]: 'up',
+  [Gdk.KEY_l]: 'right',
+}
 
 /* Presents a stream of {info, file} entries as a grid or list, with explicit
  * loading / empty / error states. Entries arrive incrementally (addEntries) and
@@ -42,6 +55,8 @@ export class FileView {
   gridView: any
   columnView: any
   nameCol: any
+  _metaCols: any[] = []
+  _columnsSig = ''
   gridScroller: any
   listScroller: any
   viewStack: any
@@ -77,7 +92,7 @@ export class FileView {
     this.columnView.addCssClass('rich-list')
     this.nameCol = nameColumn(ctx)
     this.columnView.appendColumn(this.nameCol)
-    for (const [title, fmt, right] of COLUMNS) this.columnView.appendColumn(metaColumn(title, fmt, right))
+    this.setColumns(defaultColumnConfig())
     this.columnView.on('activate', (...a: any[]) => this._activate(a[a.length - 1]))
 
     this.gridScroller = scrolled(this.gridView)
@@ -372,6 +387,22 @@ export class FileView {
 
   setMode(mode: ViewMode): void { this.viewStack.setVisibleChildName(mode === 'list' ? 'list' : 'grid') }
 
+  /* Rebuild the list view's meta columns (everything after the fixed Name
+   * column) from `configs`: the visible ones, in order. A no-op when the visible
+   * set/order is unchanged, so it's cheap to call on every pref sync. */
+  setColumns(configs: ColumnConfig[]): void {
+    const visible = configs.filter(c => c.visible && COLUMN_DEF[c.id])
+    const sig = visible.map(c => c.id).join(',')
+    if (sig === this._columnsSig) return
+    this._columnsSig = sig
+    for (const col of this._metaCols) this.columnView.removeColumn(col)
+    this._metaCols = visible.map(c => {
+      const col = metaColumn(COLUMN_DEF[c.id])
+      this.columnView.appendColumn(col)
+      return col
+    })
+  }
+
   setZoom(px: number): void {
     this.iconSize = px
     this.gridView.setFactory(gridFactory(this._cellContext()))
@@ -537,6 +568,13 @@ export class FileView {
   }
 
   _onTypeaheadKey(view: any, keyval: number, state: number): boolean {
+    /* Alt+h/j/k/l move the cursor like the arrow keys (vim-inspired). Alt alone,
+     * so Alt+u (go up) and other Alt chords still fall through to the window's
+     * shortcut controller. */
+    if ((state & MODIFIER_MASK) === Gdk.ModifierType.ALT_MASK) {
+      const dir = VIM_DIRS[Gdk.keyvalToLower(keyval)]
+      if (dir !== undefined) return this._vimMove(dir)
+    }
     if (state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK)) return false
     if (keyval === Gdk.KEY_Escape) { this._clearTypeahead(); return false }
 
@@ -597,6 +635,53 @@ export class FileView {
     if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
     this._typeahead = ''
     this.floatingBar.hide()
+  }
+
+  /* ---- Vim-style cursor movement (Alt+h/j/k/l) ----
+   * Move the selection one step in `dir`, mirroring arrow-key navigation: a
+   * single item is selected + focused and scrolled into view. The anchor is the
+   * current selection's edge in the direction of travel (exact for a lone
+   * selection); grid geometry comes from the live column count. */
+  _vimMove(dir: 'left' | 'down' | 'up' | 'right'): boolean {
+    const n = this.store.getNItems()
+    if (n === 0) return true
+    const isList = this.viewStack.getVisibleChildName() === 'list'
+    /* A flat list has no columns, so left/right have nowhere to move. */
+    if (isList && (dir === 'left' || dir === 'right')) return true
+
+    const forward = dir === 'down' || dir === 'right'
+    const sel = this.selection.getSelection()
+    let target: number
+    if (sel.getSize() === 0) {
+      target = forward ? 0 : n - 1
+    } else {
+      const cols = isList ? 1 : this._gridColumns()
+      const anchor = forward ? sel.getMaximum() : sel.getMinimum()
+      const step = dir === 'up' || dir === 'down' ? cols : 1
+      target = forward ? anchor + step : anchor - step
+      if (target < 0 || target >= n) return true   /* at an edge — stay put */
+    }
+    this.selection.selectItem(target, true)
+    this._scrollItemIntoView(target, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT)
+    return true
+  }
+
+  /* Count items in the grid's first realized row (they share a top offset) to
+   * get the live column count. Falls back to 1 (linear movement) if unavailable. */
+  _gridColumns(): number {
+    try {
+      let child = this.gridView.getFirstChild()
+      if (!child) return 1
+      const top = child.getAllocation().y
+      let cols = 0
+      while (child && child.getAllocation().y === top) {
+        cols++
+        child = child.getNextSibling()
+      }
+      return Math.max(1, cols)
+    } catch {
+      return 1
+    }
   }
 }
 

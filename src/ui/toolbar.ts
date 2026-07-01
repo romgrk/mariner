@@ -164,6 +164,7 @@ function buildViewMenu(): any {
 
   const opts = Gio.Menu.new()
   opts.append('Show Hidden Files', 'win.show-hidden')
+  opts.append('Visible Columns…', 'win.choose-columns')
   menu.appendSection(null, opts)
 
   const zoom = Gio.Menu.new()

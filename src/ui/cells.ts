@@ -2,7 +2,8 @@ import Gtk from 'gi:Gtk-4.0'
 import Pango from 'gi:Pango-1.0'
 import { F } from '../core/gio.ts'
 import { thumbnails } from '../services/thumbnail-service.ts'
-import { displayName, formatSize, formatType, formatModified } from '../core/format.ts'
+import { displayName } from '../core/format.ts'
+import type { ColumnDef } from '../core/columns.ts'
 import type { GFileInfo } from '../core/types.ts'
 
 /* Cell factories for the grid and list views. `ctx` provides the live icon size
@@ -13,8 +14,6 @@ export interface CellContext {
   attachMenu: (widget: any, item: any) => void
   isCut: (info: GFileInfo) => boolean
 }
-
-type Formatter = (info: GFileInfo) => string
 
 /* Dim hidden/backup files (styled by `.view .hidden-file` in style.css). */
 function toggleHidden(widget: any, info: GFileInfo): void {
@@ -112,21 +111,19 @@ export function nameColumn(ctx: CellContext): any {
   return col
 }
 
-export function metaColumn(title: string, fmt: Formatter, rightAlign = false): any {
+/* A resizable text column driven by a registry ColumnDef (its label + pure
+ * formatter). The FileView keeps its own ordered list of these to rebuild the
+ * visible column set. */
+export function metaColumn(def: ColumnDef): any {
   const factory = new Gtk.SignalListItemFactory()
   factory.on('setup', (item: any) => {
-    const label = new Gtk.Label({ xalign: rightAlign ? 1 : 0, ellipsize: Pango.EllipsizeMode.END })
+    const label = new Gtk.Label({ xalign: def.rightAlign ? 1 : 0, ellipsize: Pango.EllipsizeMode.END })
     label.addCssClass('dim-label')
+    label.addCssClass('mariner-meta-cell')
     item.setChild(label)
   })
-  factory.on('bind', (item: any) => item.getChild().setLabel(fmt(item.getItem())))
-  const col = new Gtk.ColumnViewColumn({ title, factory })
+  factory.on('bind', (item: any) => item.getChild().setLabel(def.format(item.getItem())))
+  const col = new Gtk.ColumnViewColumn({ title: def.label, factory })
   col.setResizable(true)
   return col
 }
-
-export const COLUMNS: Array<[string, Formatter, boolean]> = [
-  ['Size', formatSize, true],
-  ['Type', formatType, false],
-  ['Modified', formatModified, false],
-]

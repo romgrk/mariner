@@ -23,6 +23,8 @@ import { batchRenameDialog } from './ui/batch-rename.ts'
 import { compressDialog } from './ui/compress.ts'
 import { openWithDialog } from './ui/open-with.ts'
 import { buildContextMenu } from './ui/context-menu.ts'
+import { columnChooserDialog } from './ui/column-chooser.ts'
+import { defaultColumnConfig } from './core/columns.ts'
 import { QuickLook } from './ui/preview.ts'
 import { OperationsQueue } from './ui/operations-queue.ts'
 import { resolveConflicts, partitionConflicts } from './ui/conflict-dialog.ts'
@@ -40,7 +42,7 @@ function boolValue(b: boolean): any {
 
 export class AppWindow {
   app: any
-  prefs: Prefs = { showHidden: false, sortKey: 'name', sortDesc: false, viewMode: 'grid', iconSize: 64 }
+  prefs: Prefs = { showHidden: false, sortKey: 'name', sortDesc: false, viewMode: 'grid', iconSize: 64, columns: defaultColumnConfig() }
   tabs: Tab[] = []
   _activeTab: Tab | null = null
   searching = false
@@ -255,6 +257,7 @@ export class AppWindow {
     add('zoom-in', () => this._zoom(ZOOM_STEP))
     add('zoom-out', () => this._zoom(-ZOOM_STEP))
     add('zoom-reset', () => this._zoom(DEFAULT_ZOOM - this.prefs.iconSize))
+    add('choose-columns', () => this._chooseColumns())
     add('invert-selection', () => this.activeTab?.view.invertSelection())
 
     for (const key of ['name', 'size', 'type', 'modified'] as const) {
@@ -337,6 +340,16 @@ export class AppWindow {
     this.prefs.viewMode = mode
     this.toolbar.setViewIcon(mode)
     this.activeTab?.applyPrefs()
+  }
+
+  /* Open the "Visible Columns" chooser. Switches to the list view first so the
+   * edits are visible as they apply (columns only affect the list). */
+  _chooseColumns(): void {
+    if (this.prefs.viewMode !== 'list') this._setViewMode('list')
+    columnChooserDialog(this.window, this.prefs.columns, columns => {
+      this.prefs.columns = columns
+      this.activeTab?.applyColumns()
+    })
   }
 
   /* ---- Tabs / navigation ---- */

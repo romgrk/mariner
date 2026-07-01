@@ -110,7 +110,7 @@
 .mariner-list-view columnview > listview {
   padding-top: 16px;
   padding-bottom: 24px;
-  border-spacing: 8px;
+  border-spacing: 0px;
   /* Negative margins let selection/hover extend across the padding; rows below
    * re-establish the inset. (Mirrors nautilus's rubberband handling.) */
   margin-left: -24px;
@@ -131,6 +131,19 @@
 
 .mariner-list-view .mariner-view-cell {
   padding: 6px;
+}
+
+/* Non-Name columns are bare labels (no cell box); give them a little horizontal
+ * breathing room so adjacent columns aren't cramped. Matched on the column
+ * headers below so titles stay aligned with their values. */
+.mariner-list-view .mariner-meta-cell {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.mariner-list-view columnview > header > button {
+  padding-left: 6px;
+  padding-right: 6px;
 }
 
 /* ---- Both views ---- */
