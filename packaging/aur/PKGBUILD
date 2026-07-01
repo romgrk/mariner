@@ -10,12 +10,17 @@ license=('MIT')
 # Runtime: nodejs>=22.18 for unflagged TypeScript stripping; gtk4/libadwaita
 # supply the typelibs; gobject-introspection-runtime supplies libgirepository,
 # which the node-gtk native addon links against (not pulled in by gtk4).
-depends=('nodejs>=22.18' 'gtk4' 'libadwaita' 'gobject-introspection-runtime')
+# gvfs backs the trash:// view, volume monitoring, mounting and eject in the
+# places sidebar; the local file operations work without it, the sidebar does not.
+depends=('nodejs>=22.18' 'gtk4' 'libadwaita' 'gobject-introspection-runtime' 'gvfs')
 # Build: compiles the node-gtk native addon from source against system GTK.
 makedepends=('git' 'npm' 'node-gyp' 'python' 'pkgconf' 'gobject-introspection' 'cairo' 'glib2')
 optdepends=('ripgrep: full-text search inside file contents'
             'unzip: extract .zip and .jar archives'
             'zip: create .zip archives'
+            'gvfs-smb: mount Windows/Samba network shares'
+            'gvfs-mtp: mount phones and media players'
+            'xdg-user-dirs: localized Documents/Downloads/… places in the sidebar'
             'gnome-console: "Open Terminal Here" (or any of ptyxis, konsole, foot, alacritty, xterm)')
 provides=('mariner')
 conflicts=('mariner')
@@ -53,12 +58,14 @@ package() {
   cp -r node_modules "$appdir/"
   install -Dm644 package.json "$appdir/package.json"
 
-  # Launcher. --import needs an absolute path to the register hook because Node
+  # Launcher. Invokes /usr/bin/node explicitly (not a PATH `node`, which could be
+  # an nvm/volta build tied to a different ABI than the native addon was compiled
+  # against). --import needs an absolute path to the register hook because Node
   # resolves --import specifiers relative to the CWD, not the entry script.
   install -d "$pkgdir/usr/bin"
   cat > "$pkgdir/usr/bin/$_pkgname" <<EOF
 #!/bin/sh
-exec node \\
+exec /usr/bin/node \\
   --import /usr/lib/$_pkgname/node_modules/node-gtk/lib/esm/register.mjs \\
   /usr/lib/$_pkgname/src/main.ts "\$@"
 EOF
