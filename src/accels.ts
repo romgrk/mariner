@@ -5,7 +5,7 @@
 export const ACCELS: Record<string, string[]> = {
   'win.back': ['<alt>Left'],
   'win.forward': ['<alt>Right'],
-  'win.up': ['<alt>Up'],
+  'win.up': ['<alt>Up', '<alt>u'],
   'win.go-home': ['<alt>Home'],
   'win.reload': ['<ctrl>r', 'F5'],
   'win.new-tab': ['<ctrl>t'],

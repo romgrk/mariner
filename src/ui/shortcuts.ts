@@ -44,9 +44,13 @@ const SECTIONS: Section[] = [
   { title: 'Navigation', items: [
     ['Go Back', '<Alt>Left'],
     ['Go Forward', '<Alt>Right'],
-    ['Go Up', '<Alt>Up'],
+    ['Go Up', '<Alt>Up <Alt>u'],
     ['Go to Home Folder', '<Alt>Home'],
     ['Enter Location', '<Primary>l'],
+    ['Move Cursor Up', '<Alt>k'],
+    ['Move Cursor Down', '<Alt>j'],
+    ['Move Cursor Left', '<Alt>h'],
+    ['Move Cursor Right', '<Alt>l'],
   ] },
   { title: 'Search', items: [
     ['Search Current Folder', '<Primary>f'],

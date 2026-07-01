@@ -20,6 +20,18 @@ type ContextMenuHandler = (widget: any, x: number, y: number, target: Entry | nu
  * loads (the common case) swap their results in without ever showing it. */
 const SPINNER_DELAY = 300
 
+/* Chord modifiers we discriminate on (lock/scroll bits are ignored). */
+const MODIFIER_MASK = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
+  | Gdk.ModifierType.SHIFT_MASK | Gdk.ModifierType.SUPER_MASK
+
+/* Alt + h/j/k/l → arrow-key directions for cursor movement (vim-inspired). */
+const VIM_DIRS: Record<number, 'left' | 'down' | 'up' | 'right'> = {
+  [Gdk.KEY_h]: 'left',
+  [Gdk.KEY_j]: 'down',
+  [Gdk.KEY_k]: 'up',
+  [Gdk.KEY_l]: 'right',
+}
+
 /* Presents a stream of {info, file} entries as a grid or list, with explicit
  * loading / empty / error states. Entries arrive incrementally (addEntries) and
  * are kept sorted via binary-search insert; pref changes trigger a full rebuild.
@@ -537,6 +549,13 @@ export class FileView {
   }
 
   _onTypeaheadKey(view: any, keyval: number, state: number): boolean {
+    /* Alt+h/j/k/l move the cursor like the arrow keys (vim-inspired). Alt alone,
+     * so Alt+u (go up) and other Alt chords still fall through to the window's
+     * shortcut controller. */
+    if ((state & MODIFIER_MASK) === Gdk.ModifierType.ALT_MASK) {
+      const dir = VIM_DIRS[Gdk.keyvalToLower(keyval)]
+      if (dir !== undefined) return this._vimMove(dir)
+    }
     if (state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK)) return false
     if (keyval === Gdk.KEY_Escape) { this._clearTypeahead(); return false }
 
@@ -597,6 +616,53 @@ export class FileView {
     if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
     this._typeahead = ''
     this.floatingBar.hide()
+  }
+
+  /* ---- Vim-style cursor movement (Alt+h/j/k/l) ----
+   * Move the selection one step in `dir`, mirroring arrow-key navigation: a
+   * single item is selected + focused and scrolled into view. The anchor is the
+   * current selection's edge in the direction of travel (exact for a lone
+   * selection); grid geometry comes from the live column count. */
+  _vimMove(dir: 'left' | 'down' | 'up' | 'right'): boolean {
+    const n = this.store.getNItems()
+    if (n === 0) return true
+    const isList = this.viewStack.getVisibleChildName() === 'list'
+    /* A flat list has no columns, so left/right have nowhere to move. */
+    if (isList && (dir === 'left' || dir === 'right')) return true
+
+    const forward = dir === 'down' || dir === 'right'
+    const sel = this.selection.getSelection()
+    let target: number
+    if (sel.getSize() === 0) {
+      target = forward ? 0 : n - 1
+    } else {
+      const cols = isList ? 1 : this._gridColumns()
+      const anchor = forward ? sel.getMaximum() : sel.getMinimum()
+      const step = dir === 'up' || dir === 'down' ? cols : 1
+      target = forward ? anchor + step : anchor - step
+      if (target < 0 || target >= n) return true   /* at an edge — stay put */
+    }
+    this.selection.selectItem(target, true)
+    this._scrollItemIntoView(target, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT)
+    return true
+  }
+
+  /* Count items in the grid's first realized row (they share a top offset) to
+   * get the live column count. Falls back to 1 (linear movement) if unavailable. */
+  _gridColumns(): number {
+    try {
+      let child = this.gridView.getFirstChild()
+      if (!child) return 1
+      const top = child.getAllocation().y
+      let cols = 0
+      while (child && child.getAllocation().y === top) {
+        cols++
+        child = child.getNextSibling()
+      }
+      return Math.max(1, cols)
+    } catch {
+      return 1
+    }
   }
 }
 
