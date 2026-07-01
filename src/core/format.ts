@@ -29,12 +29,33 @@ export function formatType(info: GFileInfo): string {
   return Gio.contentTypeGetDescription(ct) || ct
 }
 
+/* GLib.DateTime.format returns the string, or a [string] tuple under node-gtk. */
+function fmtDate(dt: any, pattern: string): string {
+  try {
+    const out = dt.format(pattern)
+    return (Array.isArray(out) ? out[0] : out) ?? ''
+  } catch { return '' }
+}
+
+/* Human-friendly modification time: time only for today, "Yesterday" for the
+ * day before, month/day + time within the current year, and the full date for
+ * anything older. */
 export function formatModified(info: GFileInfo): string {
   const dt = info.getModificationDateTime?.()
   if (!dt) return ''
   try {
-    const out = dt.format('%-d %b %Y %H:%M')
-    return Array.isArray(out) ? out[0] : out
+    const local = dt.toLocal?.() ?? dt
+    const now = GLib.DateTime.newNowLocal()
+
+    const dayStart = (d: any) => GLib.DateTime.newLocal(d.getYear(), d.getMonth(), d.getDayOfMonth(), 0, 0, 0)
+    const DAY = 24 * 60 * 60 * 1000 * 1000 // microseconds (GLib.TimeSpan unit)
+    // difference() is a gint64, surfaced as a BigInt by node-gtk.
+    const daysAgo = Math.round(Number(dayStart(now).difference(dayStart(local))) / DAY)
+
+    if (daysAgo === 0) return fmtDate(local, '%H:%M')
+    if (daysAgo === 1) return 'Yesterday'
+    if (local.getYear() === now.getYear()) return fmtDate(local, '%b %-d %H:%M')
+    return fmtDate(local, '%b %-d, %Y')
   } catch { return '' }
 }
 
