@@ -29,25 +29,46 @@ export function formatType(info: GFileInfo): string {
   return Gio.contentTypeGetDescription(ct) || ct
 }
 
-/* Format a GLib.DateTime (or nothing) as nautilus does its date columns. */
-function formatDateTime(dt: any): string {
+/* GLib.DateTime.format returns the string, or a [string] tuple under node-gtk. */
+function fmtDate(dt: any, pattern: string): string {
+  try {
+    const out = dt.format(pattern)
+    return (Array.isArray(out) ? out[0] : out) ?? ''
+  } catch { return '' }
+}
+
+/* Human-friendly timestamp: time only for today, "Yesterday" for the day
+ * before, month/day + time within the current year, and the full date for
+ * anything older. Shared by every date column (matches nautilus, which formats
+ * modified/accessed/created alike). */
+function humanTime(dt: any): string {
   if (!dt) return ''
   try {
-    const out = dt.format('%-d %b %Y %H:%M')
-    return Array.isArray(out) ? out[0] : out
+    const local = dt.toLocal?.() ?? dt
+    const now = GLib.DateTime.newNowLocal()
+
+    const dayStart = (d: any) => GLib.DateTime.newLocal(d.getYear(), d.getMonth(), d.getDayOfMonth(), 0, 0, 0)
+    const DAY = 24 * 60 * 60 * 1000 * 1000 // microseconds (GLib.TimeSpan unit)
+    // difference() is a gint64, surfaced as a BigInt by node-gtk.
+    const daysAgo = Math.round(Number(dayStart(now).difference(dayStart(local))) / DAY)
+
+    if (daysAgo === 0) return fmtDate(local, '%H:%M')
+    if (daysAgo === 1) return 'Yesterday'
+    if (local.getYear() === now.getYear()) return fmtDate(local, '%b %-d %H:%M')
+    return fmtDate(local, '%b %-d, %Y')
   } catch { return '' }
 }
 
 export function formatModified(info: GFileInfo): string {
-  return formatDateTime(info.getModificationDateTime?.())
+  return humanTime(info.getModificationDateTime?.())
 }
 
 export function formatAccessed(info: GFileInfo): string {
-  return formatDateTime(info.getAccessDateTime?.())
+  return humanTime(info.getAccessDateTime?.())
 }
 
 export function formatCreated(info: GFileInfo): string {
-  return formatDateTime(info.getCreationDateTime?.())
+  return humanTime(info.getCreationDateTime?.())
 }
 
 export function formatOwner(info: GFileInfo): string {
