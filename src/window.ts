@@ -17,6 +17,7 @@ import { ArchiveService, isArchive } from './services/archive-service.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
 import { promptText, confirm, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
+import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { createToolbar } from './ui/toolbar.ts'
 import { shortcutsDialog } from './ui/shortcuts.ts'
 import { preferencesDialog } from './ui/preferences.ts'
@@ -130,7 +131,10 @@ export class AppWindow {
     this.split = new Adw.OverlaySplitView({ maxSidebarWidth: 240, sidebarWidthFraction: 0.2, showSidebar: true })
 
     /* Sidebar */
-    this.sidebar = createSidebar((file: GFile) => this.navigate(file))
+    this.sidebar = createSidebar(
+      (file: GFile) => this.navigate(file),
+      (file: GFile, widget: any, x: number, y: number) => this.showBookmarkMenu(file, widget, x, y),
+    )
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
     sidebarHeader.setTitleWidget(new Adw.WindowTitle({ title: 'Mariner' }))
@@ -184,6 +188,7 @@ export class AppWindow {
     s1.append('New Window', 'win.new-window')
     s1.append('New Tab', 'win.new-tab')
     s1.append('Split View', 'win.toggle-split')
+    s1.append('Add to Bookmarks', 'win.add-bookmark')
     menu.appendSection(null, s1)
     const s2 = Gio.Menu.new()
     s2.append('Undo', 'win.undo')
@@ -325,6 +330,15 @@ export class AppWindow {
     add('drive-open-tab', () => { if (this._ctxFile) this.openTab(this._ctxFile) })
     add('drive-usage', () => { if (this._ctxFile) this._propertiesFor(this._ctxFile, { expandUsage: true }) })
     add('drive-properties', () => { if (this._ctxFile) this._propertiesFor(this._ctxFile) })
+
+    /* Bookmarks. add-bookmark (menu/keyboard) targets the current folder;
+     * ctx-add-bookmark and the open/remove entries act on `_ctxFile`, which the
+     * file-view and sidebar context menus set to the folder under the cursor. */
+    add('add-bookmark', () => this._addBookmark(this.activeTab?.location ?? null))
+    add('ctx-add-bookmark', () => this._addBookmark(this._ctxFile))
+    add('bookmark-open', () => { if (this._ctxFile) this.navigate(this._ctxFile) })
+    add('bookmark-open-tab', () => { if (this._ctxFile) this.openTab(this._ctxFile) })
+    add('remove-bookmark', () => this._removeBookmark(this._ctxFile))
   }
 
   /* Analyze disk usage of the selected folder (or the current location): opens
@@ -435,6 +449,16 @@ export class AppWindow {
       act('Select All', 'select-all', { icon: 'edit-select-all-symbolic', primary: true })
       act('Open in Terminal', 'open-terminal', { icon: 'utilities-terminal-symbolic', primary: true })
       act('Analyze Disk Usage', 'disk-usage', { icon: 'drive-harddisk-symbolic', primary: true })
+    }
+
+    /* Bookmark the selected folder — or the current folder if none is selected —
+     * toggling to "Remove Bookmark" when it's already bookmarked. */
+    const bmFile = target && isDirectory(target.info) ? target.file : tab?.location ?? null
+    if (bmFile && !inTrash && F.getUri(bmFile).startsWith('file://')) {
+      if (isBookmarked(bmFile))
+        items.push({ label: 'Remove Bookmark', group: 'action', search: 'Remove Bookmark', icon: 'user-bookmarks-symbolic', primary: true, run: () => this._removeBookmark(bmFile) })
+      else
+        items.push({ label: 'Add Bookmark', group: 'action', search: 'Add Bookmark', icon: 'bookmark-new-symbolic', primary: true, detail: accelHint('win.add-bookmark'), run: () => this._addBookmark(bmFile) })
     }
 
     /* Dual-pane targets (primary when split + selection). The search text carries
@@ -611,7 +635,13 @@ export class AppWindow {
   showContextMenu(tab: Tab, widget: any, x: number, y: number, target: Entry | null): void {
     const inTrash = this._inTrash(tab.location)
     this._pasteTarget = target && isDirectory(target.info) && !inTrash ? target.file : tab.location
-    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit }), widget, x, y)
+    /* The bookmark entry acts on the folder under the cursor (`_ctxFile`); only
+     * real folders outside the Trash can be bookmarked. */
+    const bmFile = target && isDirectory(target.info) && !inTrash ? target.file : null
+    this._ctxFile = bmFile
+    const bookmark: 'add' | 'remove' | null = bmFile && F.getUri(bmFile).startsWith('file://')
+      ? (isBookmarked(bmFile) ? 'remove' : 'add') : null
+    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark }), widget, x, y)
   }
 
   /* Context menu for a drive/partition row in the Computer view. Its actions
@@ -627,6 +657,21 @@ export class AppWindow {
     info.append('Analyze Disk Usage', 'win.drive-usage')
     info.append('Properties', 'win.drive-properties')
     menu.appendSection(null, info)
+    this._popupMenu(menu, widget, x, y)
+  }
+
+  /* Context menu for a bookmark row in the sidebar. Its actions target
+   * `_ctxFile` (the bookmarked folder), set when the menu is opened. */
+  showBookmarkMenu(file: GFile, widget: any, x: number, y: number): void {
+    this._ctxFile = file
+    const menu = Gio.Menu.new()
+    const open = Gio.Menu.new()
+    open.append('Open', 'win.bookmark-open')
+    open.append('Open in New Tab', 'win.bookmark-open-tab')
+    menu.appendSection(null, open)
+    const edit = Gio.Menu.new()
+    edit.append('Remove From Sidebar', 'win.remove-bookmark')
+    menu.appendSection(null, edit)
     this._popupMenu(menu, widget, x, y)
   }
 
@@ -676,6 +721,26 @@ export class AppWindow {
       undoLabel: 'Undo Create Link', redoLabel: 'Redo Create Link',
     })
     this.toast(files.length > 1 ? 'Links created' : 'Link created')
+  }
+
+  /* ---- Bookmarks ---- */
+  /* Bookmark `file`. Only real folders are bookmarkable — the virtual places
+   * (Recent, Trash, Computer) already have their own permanent sidebar entries. */
+  _addBookmark(file: GFile | null): void {
+    if (!file) return
+    if (!F.getUri(file).startsWith('file://')) { this.toast('Only folders can be bookmarked'); return }
+    if (isBookmarked(file)) { this.toast(`“${locationName(file)}” is already bookmarked`); return }
+    if (!addBookmark(file)) { this.toast('Could not save bookmark'); return }
+    this.sidebar.refresh()
+    this.sidebar.setActive(this.activeTab?.location ?? file)
+    this.toast(`Bookmarked “${locationName(file)}”`)
+  }
+
+  _removeBookmark(file: GFile | null): void {
+    if (!file || !removeBookmark(file)) return
+    this.sidebar.refresh()
+    this.sidebar.setActive(this.activeTab?.location ?? file)
+    this.toast(`Removed “${locationName(file)}” from the sidebar`)
   }
 
   _openSelection(): void {

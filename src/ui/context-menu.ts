@@ -8,19 +8,25 @@ export interface MenuContext {
   inTrash: boolean
   clipboardEmpty: boolean
   isSplit: boolean
+  /* Whether the targeted folder can be bookmarked, and in which direction: 'add'
+   * when it isn't yet bookmarked, 'remove' when it is, null when N/A. */
+  bookmark: 'add' | 'remove' | null
 }
 
 /* Builds the file-view context-menu model (nautilus-like sections), varying by
  * whether an item is targeted, whether we're in Trash, clipboard state, and
  * whether the tab is split (dual-pane copy/move targets). Pure — the window
  * owns popover creation/positioning and the paste target. */
-export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit }: MenuContext): any {
+export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, bookmark }: MenuContext): any {
   const menu = Gio.Menu.new()
   const section = (...items: Array<[string, string]>) => {
     const s = Gio.Menu.new()
     for (const [label, action] of items) s.append(label, action)
     menu.appendSection(null, s)
   }
+  const bookmarkItem = (): [string, string] => bookmark === 'add'
+    ? ['Add to Bookmarks', 'win.ctx-add-bookmark']
+    : ['Remove From Bookmarks', 'win.remove-bookmark']
 
   if (target && inTrash) {
     section(['Restore From Trash', 'win.restore'])
@@ -47,6 +53,8 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit }: M
     if (isImage) arc.push(['Set as Wallpaper', 'win.set-wallpaper'])
     if (isDir) arc.push(['Analyze Disk Usage', 'win.disk-usage'])
     section(...arc)
+
+    if (bookmark) section(bookmarkItem())
 
     section(['Properties', 'win.properties'])
   } else if (inTrash) {

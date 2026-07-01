@@ -32,7 +32,10 @@ export interface Sidebar {
  * The separators are non-selectable separator rows rather than GtkListBoxRow
  * headers: node-gtk mis-marshals GtkListBox.setHeaderFunc/setHeader, and a
  * separator row is visually identical and keyboard-skipped. */
-export function createSidebar(onNavigate: (file: GFile) => void): Sidebar {
+export function createSidebar(
+  onNavigate: (file: GFile) => void,
+  onBookmarkMenu: (file: GFile, widget: any, x: number, y: number) => void = () => {},
+): Sidebar {
   const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.SINGLE })
   list.addCssClass('navigation-sidebar')
   list.setActivateOnSingleClick(true)
@@ -89,6 +92,17 @@ export function createSidebar(onNavigate: (file: GFile) => void): Sidebar {
     }
 
     row.setChild(b)
+
+    /* Bookmarks (and only bookmarks) get a right-click menu — to remove them. */
+    if (section === SECTION_BOOKMARKS) {
+      const secondary = new Gtk.GestureClick({ button: 3 })
+      secondary.on('pressed', (...a: any[]) => {
+        const [x, y] = a.slice(-2)
+        onBookmarkMenu(place.file, row, x, y)
+      })
+      row.addController(secondary)
+    }
+
     list.append(row)
     rows.push({ row, uri: F.getUri(place.file) })
   }

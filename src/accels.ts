@@ -34,6 +34,7 @@ export const ACCELS: Record<string, string[]> = {
   'win.trash': ['Delete'],
   'win.delete': ['<shift>Delete'],
   'win.new-folder': ['<ctrl><shift>n'],
+  'win.add-bookmark': ['<ctrl>d'],
   'win.view-list': ['<ctrl>1'],
   'win.view-grid': ['<ctrl>2'],
   'win.zoom-in': ['<ctrl>plus', '<ctrl>equal'],
