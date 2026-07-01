@@ -7,11 +7,12 @@ import { FILE_INFO_TYPE, uriOf } from '../core/gio.ts'
 import { displayName, isDirectory } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
-import { gridFactory, nameColumn, nameCellFactory, metaColumn, COLUMNS } from './cells.ts'
+import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
 import type { CellContext } from './cells.ts'
+import { COLUMN_DEF, defaultColumnConfig } from '../core/columns.ts'
 import { FloatingBar } from './floating-bar.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
-import type { Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
+import type { ColumnConfig, Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
 
 type ActivateHandler = (info: GFileInfo, file: GFile) => void
 type ContextMenuHandler = (widget: any, x: number, y: number, target: Entry | null) => void
@@ -42,6 +43,8 @@ export class FileView {
   gridView: any
   columnView: any
   nameCol: any
+  _metaCols: any[] = []
+  _columnsSig = ''
   gridScroller: any
   listScroller: any
   viewStack: any
@@ -77,7 +80,7 @@ export class FileView {
     this.columnView.addCssClass('rich-list')
     this.nameCol = nameColumn(ctx)
     this.columnView.appendColumn(this.nameCol)
-    for (const [title, fmt, right] of COLUMNS) this.columnView.appendColumn(metaColumn(title, fmt, right))
+    this.setColumns(defaultColumnConfig())
     this.columnView.on('activate', (...a: any[]) => this._activate(a[a.length - 1]))
 
     this.gridScroller = scrolled(this.gridView)
@@ -371,6 +374,22 @@ export class FileView {
   }
 
   setMode(mode: ViewMode): void { this.viewStack.setVisibleChildName(mode === 'list' ? 'list' : 'grid') }
+
+  /* Rebuild the list view's meta columns (everything after the fixed Name
+   * column) from `configs`: the visible ones, in order. A no-op when the visible
+   * set/order is unchanged, so it's cheap to call on every pref sync. */
+  setColumns(configs: ColumnConfig[]): void {
+    const visible = configs.filter(c => c.visible && COLUMN_DEF[c.id])
+    const sig = visible.map(c => c.id).join(',')
+    if (sig === this._columnsSig) return
+    this._columnsSig = sig
+    for (const col of this._metaCols) this.columnView.removeColumn(col)
+    this._metaCols = visible.map(c => {
+      const col = metaColumn(COLUMN_DEF[c.id])
+      this.columnView.appendColumn(col)
+      return col
+    })
+  }
 
   setZoom(px: number): void {
     this.iconSize = px

@@ -133,6 +133,19 @@
   padding: 6px;
 }
 
+/* Non-Name columns are bare labels (no cell box); give them a little horizontal
+ * breathing room so adjacent columns aren't cramped. Matched on the column
+ * headers below so titles stay aligned with their values. */
+.mariner-list-view .mariner-meta-cell {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+.mariner-list-view columnview > header > button {
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
 /* ---- Both views ---- */
 /* The content pane already paints the .view background — drop the views' own to
  * avoid overdraw. */

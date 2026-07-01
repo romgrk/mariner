@@ -54,6 +54,9 @@ export class Tab {
   /* Prefs (view mode, sort, hidden, zoom) are global — apply to every pane. */
   applyPrefs(): void { for (const p of this.panes) p.applyPrefs() }
 
+  /* Just the list-view columns changed (column chooser) — apply to every pane. */
+  applyColumns(): void { for (const p of this.panes) p.applyColumns() }
+
   /* ---- pane lifecycle / wiring ---- */
   _makePane(): Pane {
     const pane = new Pane(this.win.prefs)

@@ -68,7 +68,10 @@ functional tests):
 - **Context/app extras**: Open With…, Open in New Tab, Open in Terminal, Set as
   Wallpaper, Create Link.
 - **Prefs**: sort (name/size/type/modified, asc/desc), show hidden (Ctrl+H),
-  zoom (Ctrl+±), list/grid (Ctrl+1/2, reset Ctrl+0); **Preferences dialog**.
+  zoom (Ctrl+±), list/grid (Ctrl+1/2, reset Ctrl+0); **Preferences dialog**;
+  **customizable list-view columns** — a "Visible Columns" chooser (view menu)
+  toggles/reorders which columns show (Size, Type, Modified, Accessed, Created,
+  Owner, Group, Permissions; Name is always first). See §6d.
 - **Dialogs**: new folder, rename, batch rename, confirm-delete, properties
   (+ async folder size), compress, open-with, preferences, keyboard shortcuts,
   about.
@@ -108,7 +111,8 @@ Decoupled layers. **Services are GTK-free and event-based** (extend Node's
 src/
   core/                    pure/runtime primitives — no UI, no service logic
     gio.ts                 F proxy (GFile interface methods via prototype), ctors, ATTRS
-    format.ts              displayName / formatSize|Bytes|Type|Modified / locationName
+    format.ts              displayName / formatSize|Type|Modified|Accessed|Created|Owner|Group|Permissions / locationName
+    columns.ts             list-view column registry (ColumnDef[]) + defaults + normalizeColumns — pure
     comparator.ts          folders-first Comparator + binary-search sortedIndex
     navigation.ts          History (back/forward stacks) — pure
     process-stream.ts      ProcessStream: line-streaming over Gio.Subprocess (opt. cwd)
@@ -132,7 +136,8 @@ src/
   ui/                      widgets only
     file-view.ts           grid+list+state stack; typeahead; Space→preview; focus-in; drop
     floating-bar.ts        overlay status pill (typeahead indicator) — NautilusFloatingBar
-    cells.ts               grid/column cell factories; thumbnails; per-cell drag source
+    cells.ts               grid/column cell factories (metaColumn from a ColumnDef); thumbnails; per-cell drag source
+    column-chooser.ts      "Visible Columns" dialog (toggle/reorder list columns) over prefs.columns
     sidebar.ts             places view (over places-service)
     toolbar.ts             header: history / pathbar|location|search+filter / view menu
     pathbar.ts             breadcrumb buttons
@@ -354,13 +359,16 @@ checked-out nautilus source at `../nautilus` as the reference for UI + CSS.
    `win.restore` via `trash::orig-path`. Verified.
 10. [~] **Smaller items** — `Set as Wallpaper` (images), `Open in Terminal`
     (background), `Open in New Tab` (folders, Ctrl+Return), `Open With…` — all
-    wired. *Column chooser / captions still TODO (see below).*
+    wired. *Column chooser done (§6d); grid captions still TODO.*
 
 ### Remaining
 
-- **Column chooser / captions** — let the user choose which list columns show
-  and grid caption lines. Needs dynamic `Gtk.ColumnViewColumn` visibility.
+- **Grid captions** — extra caption lines under grid-view icons (size/type/…),
+  the grid-view counterpart of the list column chooser. The column registry
+  (`core/columns.ts`) already provides labelled formatters to reuse.
 - **Editable permissions** in Properties (chmod via `info`/`F.setAttribute`).
+  Note: the Permissions *column* is read-only display only.
+- ~~Column chooser~~ — **done** (list view; see §6d).
 - ~~Content (full-text) search~~ — **done** (ripgrep; see §6c).
 
 ---
@@ -549,6 +557,74 @@ Verification harnesses were throwaway `/tmp/h-*.mjs` (per §5).
   a few frames; don't spin a `return true` retry timer (keeps the frame dirty) —
   wait for the work to finish, then take one delayed snapshot (see the treemap
   harness).
+
+---
+
+## 6d. Customizable list columns (LANDED — verified per §5)
+
+Lets the user choose which columns the list view shows and in what order,
+mirroring GNOME Files' **Visible Columns** dialog (`nautilus-column-chooser.c`).
+
+### Architecture
+
+- **`core/columns.ts` — the column registry (pure, GTK-free).** A `ColumnDef`
+  is `{ id, label, format(info)→string, rightAlign? }`; `COLUMN_DEFS` lists the
+  optional meta columns in GNOME-Files order (size, type, modified, accessed,
+  created, owner, group, permissions). The **Name** column is *not* here — it's
+  always first and carries the icon/thumbnail (see `cells.ts nameColumn`).
+  `defaultColumnConfig()` returns the default `ColumnConfig[]` (size/type/modified
+  visible); `normalizeColumns()` reconciles a stored/edited config against the
+  registry (keeps known ids in order, backfills missing as hidden, drops unknown)
+  so a config stays valid across releases.
+- **`ColumnConfig = { id, visible }` (in `core/types.ts`), ordered.** Added to
+  `Prefs.columns`. Order is significant and drives both the ColumnView and the
+  chooser. Like the rest of `prefs`, it's **in-memory / session-scoped** (nothing
+  in this app persists prefs yet); `normalizeColumns` is ready if persistence is
+  added later.
+- **`format.ts` gained pure formatters** — `formatAccessed`/`formatCreated`
+  (shared `formatDateTime` helper), `formatOwner`/`formatGroup`
+  (`owner::user`/`owner::group`), `formatPermissions` (`unix::mode` → 10-char
+  `ls -l` string, e.g. `drwxr-xr-x`). `gio.ts ATTRS` gained `time::access`,
+  `time::created`, `owner::user`, `owner::group`, `unix::mode`.
+- **`cells.ts metaColumn(def)`** builds a column straight from a `ColumnDef`
+  (was a hardcoded `[title, fmt, right]` tuple + a static `COLUMNS` array, both
+  removed). **`FileView.setColumns(configs)`** rebuilds the meta columns after
+  the fixed Name column: it removes its tracked `_metaCols`, appends the visible
+  ones in order, and **short-circuits on an unchanged visible-id signature** so
+  it's cheap to call on every pref sync. Wired through `Pane.applyColumns()` +
+  `Pane.syncView()` (so an unfocused tab catches up on its next navigation) and
+  `Tab.applyColumns()` (fan-out to both panes).
+- **`ui/column-chooser.ts` — the dialog.** `columnChooserDialog(parent, configs,
+  onChange)` = an `Adw.Dialog` ("Visible Columns") hosting a boxed-list: a fixed
+  **Name** `Adw.ActionRow` first, then an `Adw.SwitchRow` per column (switch =
+  visibility) with **Move Up / Move Down** buttons. Changes apply **live** via
+  `onChange` (like nautilus's `changed` signal) — no OK/Cancel — and a **Reset**
+  header button restores defaults. `win.choose-columns` (view-menu "Visible
+  Columns…") opens it, switching to the list view first so edits are visible.
+- **Reordering uses explicit up/down buttons, not drag-and-drop.** Nautilus does
+  both; we skip DnD because it's neither headlessly verifiable nor reliable under
+  node-gtk (per §7), and menu/button reordering is a complete, keyboard-friendly
+  UX. Toggling a switch doesn't rebuild the row list (keeps the switch); a move
+  does.
+
+### Scoping / decisions (v1)
+
+- **Global columns**, not per-folder. Nautilus supports per-file column metadata
+  (the chooser's "Only apply to current folder" banner); mariner has no per-file
+  metadata store, so the chooser edits the single global `prefs.columns`. The
+  banner/switch were intentionally omitted.
+- **Permissions/Owner/Group columns are read-only display.** Editable perms stay
+  a Properties TODO (§6 Remaining).
+- **Grid captions** (the grid-view analogue) are not done; the registry's
+  labelled formatters are ready to reuse for them.
+
+### Verified (per §5)
+
+`/tmp/h-columns.mjs` (18 assertions, all pass): default/normalize config helpers;
+`formatPermissions`/`Owner`/`Group`/dates/size against a real file + a dir;
+`FileView.setColumns` initial/custom-reorder/no-op/all-hidden. GSK PNG renders:
+the list view with a custom `Name|Permissions|Owner|Modified` set (perms shown as
+`-rw-r--r--`, owner `romgrk`, dates), and the chooser dialog itself.
 
 ---
 
