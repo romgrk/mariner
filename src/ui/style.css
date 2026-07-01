@@ -110,7 +110,7 @@
 .mariner-list-view columnview > listview {
   padding-top: 16px;
   padding-bottom: 24px;
-  border-spacing: 8px;
+  border-spacing: 0px;
   /* Negative margins let selection/hover extend across the padding; rows below
    * re-establish the inset. (Mirrors nautilus's rubberband handling.) */
   margin-left: -24px;
