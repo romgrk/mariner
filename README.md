@@ -75,11 +75,6 @@ music, video) and by date (today, this week, this month, this year).
 
 - Search: **Ctrl+F**
 
-<p align="center">
-  <img src="docs/search.png" alt="Full-text search with filters" width="820">
-  <!-- screenshot placeholder — drop docs/search.png here -->
-</p>
-
 ### Built-in disk usage analyzer
 
 Right-click any folder → **Analyze Disk Usage** for a Baobab-style radial sunburst
@@ -217,6 +212,11 @@ actions:
   ]
 }
 ```
+
+<p align="center">
+  <img src="docs/custom-actions-2.png" alt="Custom actions from actions.json shown in the context menu" width="820">
+  <!-- screenshot placeholder — drop docs/custom-actions-2.png here -->
+</p>
 
 Each action needs a `label` and a `command`; the rest are optional and control
 when the action appears:
