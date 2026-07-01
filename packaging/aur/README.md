@@ -11,13 +11,13 @@ GitHub `HEAD`.
 | `/usr/lib/mariner/src/` | the app's TypeScript sources (run directly via Node type-stripping) |
 | `/usr/lib/mariner/node_modules/` | `node-gtk` with its native addon, compiled against system GTK |
 | `/usr/bin/mariner` | launcher — `node --import .../node-gtk/lib/esm/register.mjs .../src/main.ts "$@"` |
-| `/usr/share/applications/com.github.nodegtk.mariner.desktop` | menu entry (handles `inode/directory`, so Mariner can be the default file manager) |
-| `/usr/share/icons/hicolor/scalable/apps/com.github.nodegtk.mariner.svg` | app icon (matched to the app-id, so the window/taskbar pick it up automatically) |
-| `/usr/share/metainfo/com.github.nodegtk.mariner.metainfo.xml` | AppStream metadata for software centers |
+| `/usr/share/applications/com.github.romgrk.mariner.desktop` | menu entry (handles `inode/directory`, so Mariner can be the default file manager) |
+| `/usr/share/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg` | app icon (matched to the app-id, so the window/taskbar pick it up automatically) |
+| `/usr/share/metainfo/com.github.romgrk.mariner.metainfo.xml` | AppStream metadata for software centers |
 
 The launcher passes a folder path or `file://` URI straight through, so
 `mariner ~/Documents` and "Open With → Mariner" both open that folder. Set it as
-the default with `xdg-mime default com.github.nodegtk.mariner.desktop inode/directory`.
+the default with `xdg-mime default com.github.romgrk.mariner.desktop inode/directory`.
 
 ## Test the build locally (no GitHub push required)
 
@@ -76,11 +76,10 @@ Everything else (depends, makedepends, build, package) is identical.
 
 - **Source build, not a prebuilt.** `node-gtk`'s `install` script is
   `node-pre-gyp install --fallback-to-build`, which *prefers* a prebuilt binary
-  from its S3 host. Those prebuilts only exist for a handful of Node ABIs (at the
-  time of writing: Node 20/22/24) and never for Arch's rolling `nodejs`, so the
-  fallback would compile anyway. The PKGBUILD forces this with
-  `npm_config_build_from_source=true` — no opaque binary is downloaded; the addon
-  is compiled against the system libraries.
+  from its S3 host. As of node-gtk 4.0.0 those prebuilts do include Node 26
+  (matching Arch's current `nodejs`), but the PKGBUILD still forces a source
+  build with `npm_config_build_from_source=true` so the addon is compiled against
+  the exact system GTK/glib rather than an opaque downloaded binary.
 - **Native ABI.** The compiled `.node` is tied to the exact Node ABI it was built
   against, and the launcher pins `/usr/bin/node` at runtime. Build in a clean
   chroot (e.g. `makechrootpkg`) or with the system `nodejs` on `PATH` so the two
