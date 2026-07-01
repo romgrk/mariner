@@ -4,7 +4,7 @@ import Gio from 'gi:Gio-2.0'
 import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
 import { FILE_INFO_TYPE } from '../core/gio.ts'
-import { displayName } from '../core/format.ts'
+import { displayName, isDirectory } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, metaColumn, COLUMNS } from './cells.ts'
@@ -30,7 +30,7 @@ export class FileView {
   cmp: Comparator = makeComparator('name', false)
   onActivate: ActivateHandler = () => {}
   onContextMenu: ContextMenuHandler = () => {}
-  onDropFiles: (files: GFile[]) => void = () => {}
+  onDropFiles: (files: GFile[], targetDir?: GFile) => void = () => {}
 
   gridView: any
   columnView: any
@@ -242,6 +242,12 @@ export class FileView {
       const selected = this.getSelected().map(s => s.file)
       if (file && selected.includes(file)) return selected
       return file ? [file] : []
+    }))
+
+    /* Drop onto a folder cell moves the dropped files into that folder. */
+    widget.addController(makeDropTarget(files => {
+      const info = this.store.getItem(item.getPosition())
+      if (info && isDirectory(info)) this.onDropFiles(files, info._file)
     }))
 
     /* Disable rubberband while an item is pressed so item-drag starts a DnD drag

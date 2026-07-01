@@ -6,6 +6,7 @@ import GObject from 'gi:GObject-2.0'
 import Gdk from 'gi:Gdk-4.0'
 
 import { Tab } from './tab.ts'
+import { ACCELS } from './accels.ts'
 import { F, fileForPath, fileForUri } from './core/gio.ts'
 import { HOME, locationName, isDirectory, displayName } from './core/format.ts'
 import { ClipboardService } from './services/clipboard-service.ts'
@@ -71,6 +72,7 @@ export class AppWindow {
     this.app = app
     this._buildUI()
     this._buildActions()
+    this._installShortcuts()
     this._wireFileOps()
     this.openTab(startFile)
     this.window.present()
@@ -82,6 +84,20 @@ export class AppWindow {
     const maximized = this.window.isMaximized()
     const [width, height] = this.window.getDefaultSize()
     saveWindowState({ width, height, maximized })
+  }
+
+  /* Explicit shortcut controller for the win.* actions. App-level accelerators
+   * (main.ts) weren't firing under node-gtk; this bubble-phase controller does,
+   * while still letting a focused text entry consume Ctrl+C/V/A for its text. */
+  _installShortcuts(): void {
+    const controller = new Gtk.ShortcutController()
+    controller.setPropagationPhase(Gtk.PropagationPhase.BUBBLE)
+    for (const [action, accels] of Object.entries(ACCELS))
+      for (const accel of accels) {
+        const trigger = Gtk.ShortcutTrigger.parseString(accel)
+        if (trigger) controller.addShortcut(new Gtk.Shortcut({ trigger, action: Gtk.NamedAction.new(action) }))
+      }
+    this.window.addController(controller)
   }
 
   /* ---- UI ---- */
@@ -487,19 +503,30 @@ export class AppWindow {
     } catch { /* no system clipboard */ }
   }
 
-  /* Files dropped into a tab's view (from another app or this one): copy any
-   * that don't already live in the destination folder. */
-  onDropFiles(tab: Tab, files: GFile[]): void {
-    const dest = tab.location
+  /* Files dropped into a view. Dropping onto a folder cell (targetDir) moves
+   * them into it; dropping onto the background copies them into the current
+   * folder (the cross-app case). Files already in the destination are skipped. */
+  onDropFiles(tab: Tab, files: GFile[], targetDir?: GFile): void {
+    const dest = targetDir ?? tab.location
     const destUri = F.getUri(dest)
     const incoming = files.filter(f => { const p = F.getParent(f); return !p || F.getUri(p) !== destUri })
     if (!incoming.length) return
-    const dests = this.fileOps.copy(incoming, dest)
-    this.undo.push({
-      undo: () => this.fileOps.trash(dests),
-      redo: () => this.fileOps.copy(incoming, dest),
-      undoLabel: 'Undo Copy', redoLabel: 'Redo Copy',
-    })
+    if (targetDir) {
+      const origParent = F.getParent(incoming[0])
+      let dests = this.fileOps.move(incoming, dest)
+      if (origParent) this.undo.push({
+        undo: () => { dests = this.fileOps.move(dests, origParent) },
+        redo: () => { dests = this.fileOps.move(incoming, dest) },
+        undoLabel: 'Undo Move', redoLabel: 'Redo Move',
+      })
+    } else {
+      const dests = this.fileOps.copy(incoming, dest)
+      this.undo.push({
+        undo: () => this.fileOps.trash(dests),
+        redo: () => this.fileOps.copy(incoming, dest),
+        undoLabel: 'Undo Copy', redoLabel: 'Redo Copy',
+      })
+    }
   }
 
   _paste(): void {
