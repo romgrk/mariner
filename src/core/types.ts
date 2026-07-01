@@ -23,6 +23,14 @@ export type SortKey = 'name' | 'size' | 'type' | 'modified'
 export type ViewMode = 'grid' | 'list'
 export type EmptyKind = 'folder' | 'search'
 
+export type SearchCategory = 'all' | 'folder' | 'document' | 'image' | 'audio' | 'video'
+/* Rich-search refinements applied to matches (in the search service, where the
+ * resolved GFileInfo is available). `since` is a unix-seconds floor (0 = any). */
+export interface SearchFilter {
+  category: SearchCategory
+  since: number
+}
+
 export interface Prefs {
   showHidden: boolean
   sortKey: SortKey

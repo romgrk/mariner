@@ -2,8 +2,9 @@ import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import { F } from '../core/gio.ts'
 import {
-  displayName, formatType, formatSize, formatModified, isDirectory,
+  displayName, formatType, formatSize, formatBytes, formatModified, isDirectory,
 } from '../core/format.ts'
+import { measureUsage } from '../core/measure.ts'
 import type { GFile, GFileInfo } from '../core/types.ts'
 
 interface PromptOptions {
@@ -95,6 +96,24 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile): void 
   row('Location', parentDir ? F.getPath(parentDir) : '')
   row('Modified', formatModified(info))
   row('Permissions', permString(info))
+
+  /* Folders: walk asynchronously for total size + item counts, updating live. */
+  if (isDirectory(info)) {
+    const contents = new Adw.ActionRow({ title: 'Contents', subtitle: 'Calculating…' })
+    contents.addCssClass('property')
+    group.add(contents)
+    const path = F.getPath(file)
+    if (path) {
+      let cancelled = false
+      dialog.on('closed', () => { cancelled = true })
+      measureUsage(path, (u, done) => {
+        const items = `${u.files} file${u.files === 1 ? '' : 's'}, ${u.folders} folder${u.folders === 1 ? '' : 's'}`
+        contents.setSubtitle(`${formatBytes(u.bytes)} — ${items}${done ? '' : '…'}`)
+      }, () => cancelled)
+    } else {
+      contents.setSubtitle('—')
+    }
+  }
 
   page.add(group)
   tv.setContent(page)

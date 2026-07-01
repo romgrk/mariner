@@ -1,14 +1,18 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import Gio from 'gi:Gio-2.0'
+import GLib from 'gi:GLib-2.0'
 import { createPathBar } from './pathbar.ts'
+import { createSearchFilterButton } from './search-filter.ts'
 import type { PathBar } from './pathbar.ts'
-import type { GFile, ViewMode } from '../core/types.ts'
+import type { GFile, ViewMode, SearchFilter } from '../core/types.ts'
 
 export interface ToolbarHandlers {
   onNavigate: (file: GFile) => void
   onLocationEntry: (text: string) => void
   onSearchChanged: (text: string) => void
+  onSearchFilter: (f: SearchFilter) => void
+  onSearchExit: () => void
 }
 
 export interface Toolbar {
@@ -23,7 +27,7 @@ export interface Toolbar {
 
 /* Content-area header bar: history, breadcrumb/location/search stack, view
  * controls, new-folder. Buttons drive win.* actions defined by the window. */
-export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }: ToolbarHandlers): Toolbar {
+export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged, onSearchFilter, onSearchExit }: ToolbarHandlers): Toolbar {
   const header = new Adw.HeaderBar()
 
   /* History controls */
@@ -48,11 +52,25 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged }: 
 
   const searchEntry = new Gtk.SearchEntry({ hexpand: true })
   searchEntry.on('search-changed', () => onSearchChanged(searchEntry.getText()))
+  /* Escape cancels search; losing focus while empty exits to the pathbar
+   * (unless focus went to the filter popover). */
+  searchEntry.on('stop-search', () => onSearchExit())
+  const filterButton = createSearchFilterButton(onSearchFilter)
+  const searchFocus = new Gtk.EventControllerFocus()
+  searchFocus.on('leave', () => GLib.idleAdd(GLib.PRIORITY_DEFAULT_IDLE, () => {
+    if (!searchEntry.getText() && !filterButton.widget.getActive()) onSearchExit()
+    return false
+  }))
+  searchEntry.addController(searchFocus)
+  const searchBox = new Gtk.Box()
+  searchBox.addCssClass('linked')
+  searchBox.append(searchEntry)
+  searchBox.append(filterButton.widget)
 
   const titleStack = new Gtk.Stack({ transitionType: Gtk.StackTransitionType.CROSSFADE })
   titleStack.addNamed(wrapCenter(pathbar.widget), 'pathbar')
   titleStack.addNamed(locationBox, 'location')
-  titleStack.addNamed(searchEntry, 'search')
+  titleStack.addNamed(searchBox, 'search')
 
   const searchButton = new Gtk.ToggleButton({ iconName: 'edit-find-symbolic', tooltipText: 'Search Current Folder' })
 

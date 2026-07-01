@@ -9,6 +9,8 @@ import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, metaColumn, COLUMNS } from './cells.ts'
 import type { CellContext } from './cells.ts'
+import { FloatingBar } from './floating-bar.ts'
+import { makeDragSource, makeDropTarget } from './dnd.ts'
 import type { Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
 
 type ActivateHandler = (info: GFileInfo, file: GFile) => void
@@ -28,16 +30,24 @@ export class FileView {
   cmp: Comparator = makeComparator('name', false)
   onActivate: ActivateHandler = () => {}
   onContextMenu: ContextMenuHandler = () => {}
+  onDropFiles: (files: GFile[]) => void = () => {}
 
   gridView: any
   columnView: any
+  gridScroller: any
+  listScroller: any
   viewStack: any
   stack: any
+  overlay: any
+  floatingBar: FloatingBar
   _errorPage: any
   _loading = false
   _emptyKind: EmptyKind = 'folder'
   _typeahead = ''
   _typeaheadTimer = 0
+  _wantFocus = false
+  _wantScrollTop = false
+  _pressedOnItem = false
 
   constructor() {
     this.store = Gio.ListStore.new(FILE_INFO_TYPE)
@@ -45,21 +55,28 @@ export class FileView {
 
     const ctx = this._cellContext()
 
-    this.gridView = new Gtk.GridView({ model: this.selection, factory: gridFactory(ctx), minColumns: 1, maxColumns: 24, vexpand: true })
+    this.gridView = new Gtk.GridView({ model: this.selection, factory: gridFactory(ctx), minColumns: 1, maxColumns: 24, vexpand: true, enableRubberband: true })
     this.gridView.on('activate', (...a: any[]) => this._activate(a[a.length - 1]))
 
-    this.columnView = new Gtk.ColumnView({ model: this.selection, vexpand: true })
+    this.columnView = new Gtk.ColumnView({ model: this.selection, vexpand: true, enableRubberband: true })
     this.columnView.addCssClass('rich-list')
     this.columnView.appendColumn(nameColumn(ctx))
     for (const [title, fmt, right] of COLUMNS) this.columnView.appendColumn(metaColumn(title, fmt, right))
     this.columnView.on('activate', (...a: any[]) => this._activate(a[a.length - 1]))
 
+    this.gridScroller = scrolled(this.gridView)
+    this.gridScroller.addCssClass('nautilus-grid-view')
+    this.listScroller = scrolled(this.columnView)
+    this.listScroller.addCssClass('nautilus-list-view')
+
     this.viewStack = new Gtk.Stack()
-    this.viewStack.addNamed(scrolled(this.gridView), 'grid')
-    this.viewStack.addNamed(scrolled(this.columnView), 'list')
+    this.viewStack.addNamed(this.gridScroller, 'grid')
+    this.viewStack.addNamed(this.listScroller, 'list')
 
     this._addBackgroundMenu(this.gridView)
     this._addBackgroundMenu(this.columnView)
+    this._addBackgroundClick(this.gridView)
+    this._addBackgroundClick(this.columnView)
     this._installTypeahead(this.gridView)
     this._installTypeahead(this.columnView)
 
@@ -71,9 +88,18 @@ export class FileView {
     this.stack.addNamed(new Adw.StatusPage({ iconName: 'folder-symbolic', title: 'Folder is Empty' }), 'empty-folder')
     this.stack.addNamed(new Adw.StatusPage({ iconName: 'system-search-symbolic', title: 'No Results Found', description: 'Try a different search term.' }), 'empty-search')
     this.stack.addNamed(this._errorPage, 'error')
+
+    /* Overlay hosts the transient floating bar (typeahead indicator), pinned to
+     * the bottom-right like nautilus's NautilusFloatingBar. */
+    this.floatingBar = new FloatingBar()
+    this.overlay = new Gtk.Overlay({ child: this.stack })
+    this.overlay.addOverlay(this.floatingBar.widget)
+
+    /* Accept files dropped from other apps (or this one) into the current view. */
+    this.overlay.addController(makeDropTarget(files => this.onDropFiles(files)))
   }
 
-  get widget(): any { return this.stack }
+  get widget(): any { return this.overlay }
 
   configure({ sortKey, sortDesc, filter }: ViewConfig): void {
     this.cmp = makeComparator(sortKey, sortDesc)
@@ -93,7 +119,34 @@ export class FileView {
       this.all.push({ info, file })
       if (this.filter(info)) this._insertSorted(info)
     }
-    if (this._loading && this.store.getNItems() > 0) this.stack.setVisibleChildName('results')
+    if (this._loading && this.store.getNItems() > 0) {
+      this.stack.setVisibleChildName('results')
+      this._applyPending()
+    }
+  }
+
+  /* Signal an upcoming directory change: reset scroll to top and move focus into
+   * the view once results appear (so typeahead/selection keys work immediately). */
+  prepareForNavigation(): void {
+    this._wantFocus = true
+    this._wantScrollTop = true
+  }
+
+  _applyPending(): void {
+    if (this.stack.getVisibleChildName() !== 'results') return
+    if (this._wantScrollTop) { this._scrollTop(); this._wantScrollTop = false }
+    if (this._wantFocus) { this._focusVisibleView(); this._wantFocus = false }
+  }
+
+  _scrollTop(): void {
+    const sw = this.viewStack.getVisibleChildName() === 'list' ? this.listScroller : this.gridScroller
+    const adj = sw?.getVadjustment?.()
+    if (adj) adj.setValue(0)
+  }
+
+  _focusVisibleView(): void {
+    const view = this.viewStack.getVisibleChildName() === 'list' ? this.columnView : this.gridView
+    view.grabFocus()
   }
 
   finishLoading(emptyKind: EmptyKind = 'folder'): void {
@@ -125,6 +178,14 @@ export class FileView {
 
   selectAll(): void { this.selection.selectAll() }
 
+  invertSelection(): void {
+    const n = this.store.getNItems()
+    for (let i = 0; i < n; i++) {
+      if (this.selection.isSelected(i)) this.selection.unselectItem(i)
+      else this.selection.selectItem(i, false)
+    }
+  }
+
   getSelected(): Entry[] {
     const out: Entry[] = []
     const n = this.store.getNItems()
@@ -143,7 +204,7 @@ export class FileView {
   }
 
   _settle(): void {
-    if (this.store.getNItems() > 0) this.stack.setVisibleChildName('results')
+    if (this.store.getNItems() > 0) { this.stack.setVisibleChildName('results'); this._applyPending() }
     else this.stack.setVisibleChildName(this._emptyKind === 'search' ? 'empty-search' : 'empty-folder')
   }
 
@@ -173,6 +234,41 @@ export class FileView {
       this.onContextMenu(widget, x, y, { info, file: info._file })
     })
     widget.addController(gesture)
+
+    /* Drag out the selection (or just this item if it isn't selected). */
+    widget.addController(makeDragSource(() => {
+      const pos = item.getPosition()
+      const file = this.store.getItem(pos)?._file
+      const selected = this.getSelected().map(s => s.file)
+      if (file && selected.includes(file)) return selected
+      return file ? [file] : []
+    }))
+
+    /* Disable rubberband while an item is pressed so item-drag starts a DnD drag
+     * rather than a rubberband (GTK issue 5670); re-enable on release/stop so
+     * empty-space drag rubberbands. Non-claiming: normal click-to-select stays. */
+    const press = new Gtk.GestureClick({ button: 1 })
+    press.on('pressed', () => { this._pressedOnItem = true; this._setRubberband(false) })
+    press.on('released', () => this._setRubberband(true))
+    press.on('stopped', () => this._setRubberband(true))
+    widget.addController(press)
+  }
+
+  /* Primary click on empty view space clears the selection and moves focus into
+   * the view (so keyboard actions work and the search entry blurs). Item presses
+   * set `_pressedOnItem` first (bubble: cell before view), so they're skipped. */
+  _addBackgroundClick(view: any): void {
+    const gesture = new Gtk.GestureClick({ button: 1 })
+    gesture.on('pressed', () => {
+      if (!this._pressedOnItem) { this.selection.unselectAll(); view.grabFocus() }
+      this._pressedOnItem = false
+    })
+    view.addController(gesture)
+  }
+
+  _setRubberband(on: boolean): void {
+    this.gridView.setEnableRubberband(on)
+    this.columnView.setEnableRubberband(on)
   }
 
   _addBackgroundMenu(view: any): void {
@@ -201,18 +297,26 @@ export class FileView {
       if (!this._typeahead) return false
       this._typeahead = this._typeahead.slice(0, -1)
       this._armTypeaheadTimer()
+      this._syncTypeaheadBar()
       if (this._typeahead) this._typeaheadFind(view)
       return true
     }
 
     const ch = Gdk.keyvalToUnicode(keyval)
-    if (!ch || ch < 0x20) return false           /* not a printable character */
+    if (!ch || ch < 0x20 || ch === 0x7f) return false   /* not a printable char (0x7f = Delete) */
     const s = String.fromCodePoint(ch)
     if (!this._typeahead && s === ' ') return false   /* leading space is a no-op */
     this._typeahead += s
     this._armTypeaheadTimer()
+    this._syncTypeaheadBar()
     this._typeaheadFind(view)
     return true
+  }
+
+  /* Reflect the current typeahead buffer in the floating indicator. */
+  _syncTypeaheadBar(): void {
+    if (this._typeahead) this.floatingBar.show(this._typeahead)
+    else this.floatingBar.hide()
   }
 
   _typeaheadFind(view: any): void {
@@ -236,6 +340,7 @@ export class FileView {
     this._typeaheadTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 1000, () => {
       this._typeaheadTimer = 0
       this._typeahead = ''
+      this.floatingBar.hide()
       return false
     })
   }
@@ -243,6 +348,7 @@ export class FileView {
   _clearTypeahead(): void {
     if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
     this._typeahead = ''
+    this.floatingBar.hide()
   }
 }
 

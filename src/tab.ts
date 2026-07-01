@@ -5,7 +5,7 @@ import { History } from './core/navigation.ts'
 import { F } from './core/gio.ts'
 import { locationName } from './core/format.ts'
 import type { AppWindow } from './window.ts'
-import type { Entry, GFile, GFileInfo, ViewConfig } from './core/types.ts'
+import type { Entry, GFile, GFileInfo, ViewConfig, SearchFilter } from './core/types.ts'
 
 /* Per-tab controller: binds a DirectoryService + SearchService to a FileView,
  * owns navigation history and search state. Holds no widget construction beyond
@@ -19,6 +19,7 @@ export class Tab {
   location: GFile | null = null
   searching = false
   searchQuery = ''
+  searchFilter: SearchFilter = { category: 'all', since: 0 }
   page: any
 
   constructor(win: AppWindow, file: GFile) {
@@ -26,6 +27,7 @@ export class Tab {
     this.view = new FileView()
     this.view.onActivate = (info, f) => win.onItemActivated(this, info, f)
     this.view.onContextMenu = (w, x, y, target) => win.showContextMenu(this, w, x, y, target)
+    this.view.onDropFiles = files => win.onDropFiles(this, files)
 
     this.dir = new DirectoryService()
     this.search = new SearchService()
@@ -39,7 +41,8 @@ export class Tab {
   get canGoBack(): boolean { return this.history.canGoBack }
   get canGoForward(): boolean { return this.history.canGoForward }
   get parent(): GFile | null { return F.getParent(this.location) }
-  get isShowingSearch(): boolean { return this.searching && !!this.searchQuery }
+  get searchActive(): boolean { return !!this.searchQuery || this.searchFilter.category !== 'all' || this.searchFilter.since > 0 }
+  get isShowingSearch(): boolean { return this.searching && this.searchActive }
 
   _wire(): void {
     this.dir.on('loading', () => { this.view.configure(this._dirConfig()); this.view.beginLoading() })
@@ -72,6 +75,7 @@ export class Tab {
     this._exitSearch()
     if (push && this.location) this.history.visit(this.location)
     this.location = file
+    this.view.prepareForNavigation()
     this.dir.load(file)
     this._afterChange()
   }
@@ -85,6 +89,7 @@ export class Tab {
     if (!file) return
     this._exitSearch()
     this.location = file
+    this.view.prepareForNavigation()
     this.dir.load(file)
     this._afterChange()
   }
@@ -92,17 +97,18 @@ export class Tab {
   /* ---- search ---- */
   beginSearch(): void { this.searching = true; this.searchQuery = ''; this._runSearch() }
   setSearchQuery(q: string): void { if (!this.searching) return; this.searchQuery = q; this._runSearch() }
+  setSearchFilter(f: SearchFilter): void { this.searchFilter = f; if (this.searching) this._runSearch() }
   endSearch(): void { if (!this.searching) return; this._exitSearch(); this.dir.load(this.location) }
 
   _exitSearch(): void { this.searching = false; this.searchQuery = ''; this.search.cancel() }
 
   _runSearch(): void {
-    if (this.searchQuery) {
+    if (this.searchActive) {
       this.dir.cancel()
-      this.search.search(this.location, this.searchQuery, { showHidden: this.win.prefs.showHidden })
+      this.search.search(this.location, this.searchQuery, { showHidden: this.win.prefs.showHidden, filter: this.searchFilter })
     } else {
       this.search.cancel()
-      this.dir.load(this.location)   /* empty query → show the current folder */
+      this.dir.load(this.location)   /* empty query + no filter → show the current folder */
     }
   }
 

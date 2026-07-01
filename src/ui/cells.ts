@@ -1,5 +1,7 @@
 import Gtk from 'gi:Gtk-4.0'
 import Pango from 'gi:Pango-1.0'
+import { F } from '../core/gio.ts'
+import { thumbnails } from '../services/thumbnail-service.ts'
 import { displayName, formatSize, formatType, formatModified } from '../core/format.ts'
 import type { GFileInfo } from '../core/types.ts'
 
@@ -13,16 +15,40 @@ export interface CellContext {
 
 type Formatter = (info: GFileInfo) => string
 
+/* Dim hidden/backup files (styled by `.view .hidden-file` in style.css). */
+function toggleHidden(widget: any, info: GFileInfo): void {
+  const hidden = info.getIsHidden() || info.getIsBackup()
+  if (hidden) widget.addCssClass('hidden-file')
+  else widget.removeCssClass('hidden-file')
+}
+
+/* Swap in a thumbnail once resolved. Guards against cell recycling by tagging
+ * the image with the key it is currently displaying. */
+function applyThumbnail(image: any, info: GFileInfo): void {
+  const file = info._file
+  const path = file && F.getPath(file)
+  if (!path) { image._thumbKey = null; return }
+  const uri = F.getUri(file)
+  const key = uri + '|' + info.getAttributeUint64('time::modified')
+  image._thumbKey = key
+  thumbnails.request({ key, path, uri, contentType: info.getContentType() || '', bytes: Number(info.getSize()) }, tex => {
+    if (tex && image._thumbKey === key) image.setFromPaintable(tex)
+  })
+}
+
 export function gridFactory(ctx: CellContext): any {
   const factory = new Gtk.SignalListItemFactory()
   factory.on('setup', (item: any) => {
+    /* Spacing/padding come from the .nautilus-view-cell + gridview CSS. */
     const box = new Gtk.Box({
       orientation: Gtk.Orientation.VERTICAL, spacing: 6,
       halign: Gtk.Align.CENTER, valign: Gtk.Align.START,
-      marginTop: 6, marginBottom: 6, marginStart: 4, marginEnd: 4,
       widthRequest: 100,
     })
-    box.append(new Gtk.Image({ pixelSize: ctx.iconSize() }))
+    box.addCssClass('nautilus-view-cell')
+    const image = new Gtk.Image({ pixelSize: ctx.iconSize() })
+    image.addCssClass('nautilus-image')
+    box.append(image)
     box.append(new Gtk.Label({
       ellipsize: Pango.EllipsizeMode.END, wrap: true,
       wrapMode: Pango.WrapMode.WORD_CHAR, lines: 2,
@@ -40,6 +66,8 @@ export function gridFactory(ctx: CellContext): any {
     if (icon) image.setFromGicon(icon)
     else image.setFromIconName('text-x-generic')
     box.getLastChild().setLabel(displayName(info))
+    toggleHidden(box, info)
+    applyThumbnail(image, info)
   })
   return factory
 }
@@ -48,7 +76,10 @@ export function nameColumn(ctx: CellContext): any {
   const factory = new Gtk.SignalListItemFactory()
   factory.on('setup', (item: any) => {
     const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 8 })
-    box.append(new Gtk.Image({ pixelSize: 16 }))
+    box.addCssClass('nautilus-view-cell')
+    const image = new Gtk.Image({ pixelSize: 16 })
+    image.addCssClass('nautilus-image')
+    box.append(image)
     box.append(new Gtk.Label({ ellipsize: Pango.EllipsizeMode.END, xalign: 0 }))
     item.setChild(box)
     ctx.attachMenu(box, item)
@@ -56,9 +87,12 @@ export function nameColumn(ctx: CellContext): any {
   factory.on('bind', (item: any) => {
     const info = item.getItem()
     const box = item.getChild()
+    const image = box.getFirstChild()
     const icon = info.getIcon()
-    if (icon) box.getFirstChild().setFromGicon(icon)
+    if (icon) image.setFromGicon(icon)
     box.getLastChild().setLabel(displayName(info))
+    toggleHidden(box, info)
+    applyThumbnail(image, info)
   })
   const col = new Gtk.ColumnViewColumn({ title: 'Name', factory })
   col.setExpand(true)

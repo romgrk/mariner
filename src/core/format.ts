@@ -18,6 +18,10 @@ export function formatSize(info: GFileInfo): string {
   return GLib.formatSize(info.getSize())
 }
 
+export function formatBytes(bytes: number): string {
+  return GLib.formatSize(bytes)
+}
+
 export function formatType(info: GFileInfo): string {
   if (isDirectory(info)) return 'Folder'
   const ct = info.getContentType()

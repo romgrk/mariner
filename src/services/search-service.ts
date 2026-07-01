@@ -4,7 +4,25 @@ import { fileURLToPath } from 'node:url'
 import { EventEmitter } from '../core/emitter.ts'
 import { ProcessStream } from '../core/process-stream.ts'
 import { F, ATTRS, fileForPath } from '../core/gio.ts'
-import type { GFile } from '../core/types.ts'
+import { modifiedUnix } from '../core/format.ts'
+import type { GFile, GFileInfo, SearchFilter } from '../core/types.ts'
+
+const DOCUMENT_RE = /officedocument|opendocument|msword|pdf|rtf|ebook|epub/
+
+/* Whether a resolved entry passes the rich-search filter (category + date). */
+function matchesFilter(info: GFileInfo, filter: SearchFilter | null): boolean {
+  if (!filter) return true
+  if (filter.since && modifiedUnix(info) < filter.since) return false
+  const ct = info.getContentType() || ''
+  switch (filter.category) {
+    case 'folder': return info.getFileType() === Gio.FileType.DIRECTORY
+    case 'image': return ct.startsWith('image/')
+    case 'audio': return ct.startsWith('audio/')
+    case 'video': return ct.startsWith('video/')
+    case 'document': return ct.startsWith('text/') || DOCUMENT_RE.test(ct)
+    default: return true
+  }
+}
 
 const WORKER = fileURLToPath(new URL('../workers/search-worker.ts', import.meta.url))
 
@@ -21,11 +39,13 @@ const WORKER = fileURLToPath(new URL('../workers/search-worker.ts', import.meta.
 export class SearchService extends EventEmitter {
   stream: ProcessStream | null = null
   cancellable: any = null
+  filter: SearchFilter | null = null
 
   get active(): boolean { return this.stream !== null }
 
-  search(rootDir: GFile, query: string, { showHidden = false }: { showHidden?: boolean } = {}): void {
+  search(rootDir: GFile, query: string, { showHidden = false, filter = null }: { showHidden?: boolean; filter?: SearchFilter | null } = {}): void {
     this.cancel()
+    this.filter = filter
     const token = this.cancellable = new Gio.Cancellable()
     const argv = [process.execPath, WORKER, F.getPath(rootDir), query, showHidden ? '1' : '0']
 
@@ -47,7 +67,7 @@ export class SearchService extends EventEmitter {
         if (token.isCancelled()) return
         let info
         try { info = F.queryInfoFinish(file, res) } catch { return }
-        this.emit('result', { info, file })
+        if (matchesFilter(info, this.filter)) this.emit('result', { info, file })
       })
   }
 

@@ -46,21 +46,39 @@ functional tests):
 - **Sidebar**: Recent, Home, XDG special dirs, Trash, bookmarks
   (`~/.config/gtk-3.0/bookmarks`), mounted volumes (`Gio.VolumeMonitor`).
 - **Recursive search** (Ctrl+F): runs **out-of-process** (`workers/search-worker.ts`),
-  streams matches over a GLib-serviced pipe, resolves each match's metadata async,
-  appends incrementally. Empty query shows the current folder; no matches → empty
-  state; worker error → error state.
+  walks **breadth-first** (FIFO queue, like nautilus-search-engine-simple) so
+  matches nearest the root surface first, streams matches over a GLib-serviced
+  pipe, resolves each match's metadata async, appends incrementally. Empty query
+  shows the current folder; no matches → empty state; worker error → error state.
 - **Typeahead**: plain typing in a focused view selects the first prefix
-  (then substring) match and scrolls to it; resets after ~1s; Backspace/Escape
-  editing; Ctrl/Alt chords ignored.
+  (then substring) match and scrolls to it; the current query shows in a
+  bottom-right floating pill (nautilus-style); resets after ~1s;
+  Backspace/Escape editing; Ctrl/Alt chords ignored.
 - **Operations** (async, time-sliced, non-blocking, with progress bar + toasts):
   new folder, rename, copy, cut/paste (move), move to trash, delete permanently,
-  empty trash, symlink. Copy/move/delete are recursive with auto-renamed
-  collisions.
+  empty trash, symlink, restore-from-trash. Copy/move/delete are recursive with
+  auto-renamed collisions. **Undo/redo** (Ctrl+Z/Y) of all of the above.
+- **Thumbnails** for images (freedesktop cache + GdkPixbuf, lazy on idle).
+- **Clipboard/DnD**: cut/copy publish to the system clipboard; drag files out and
+  drop files in (see §7 for the verification caveat).
+- **Rich search**: recursive name search + funnel filter (category + date window).
+- **Batch rename** (multi-select: find/replace or numbered, live preview).
+- **Archive**: Extract Here / Compress… (zip/tar.*/7z via CLI tools).
+- **Trash view**: Empty-Trash banner + Restore.
+- **Context/app extras**: Open With…, Open in New Tab, Open in Terminal, Set as
+  Wallpaper, Create Link.
 - **Prefs**: sort (name/size/type/modified, asc/desc), show hidden (Ctrl+H),
-  zoom (Ctrl+±).
-- **Dialogs**: new folder, rename, confirm-delete, properties, about.
+  zoom (Ctrl+±), list/grid (Ctrl+1/2, reset Ctrl+0); **Preferences dialog**.
+- **Dialogs**: new folder, rename, batch rename, confirm-delete, properties
+  (+ async folder size), compress, open-with, preferences, keyboard shortcuts,
+  about.
 - **Live refresh** via `Gio.FileMonitor` (debounced).
-- Accelerators wired in `main.ts` (`ACCELS`).
+- Accelerators wired in `main.ts` (`ACCELS`); Keyboard Shortcuts window lists them.
+- **Interaction**: the file view grabs focus on load/navigation (so typeahead
+  and selection keys work immediately — no click required); scroll resets to top
+  on navigation (kept on refresh); primary click on empty space clears the
+  selection + focuses the view; search exits to the pathbar on Escape or on
+  empty focus-out (not when the filter popover opens); window remembers its size.
 
 ---
 
@@ -73,28 +91,43 @@ Decoupled layers. **Services are GTK-free and event-based** (extend Node's
 src/
   core/                    pure/runtime primitives — no UI, no service logic
     gio.ts                 F proxy (GFile interface methods via prototype), ctors, ATTRS
-    format.ts              displayName / formatSize|Type|Modified / locationName
+    format.ts              displayName / formatSize|Bytes|Type|Modified / locationName
     comparator.ts          folders-first Comparator + binary-search sortedIndex
     navigation.ts          History (back/forward stacks) — pure
-    process-stream.ts      ProcessStream: line-streaming over Gio.Subprocess
+    process-stream.ts      ProcessStream: line-streaming over Gio.Subprocess (opt. cwd)
+    measure.ts             async recursive disk-usage walk (node fs) for Properties
     emitter.ts             re-exports Node EventEmitter (loop-safe, pure JS)
-    types.ts               Entry, Place, Prefs, ViewConfig, SortKey, Op* payloads
+    types.ts               Entry, Place, Prefs, ViewConfig, SortKey, SearchFilter, Op*
   services/                one responsibility each; emit events; GTK-free
     directory-service.ts   load(dir): 'loading'|'items'|'ready'|'error'|'invalidated'
-    search-service.ts      search(dir,q): 'start'|'result'|'end'|'error'
-    file-operations.ts     copy/move/delete/trash/rename/newFolder/link/emptyTrash
+    search-service.ts      search(dir,q,{filter}): 'start'|'result'|'end'|'error'
+    file-operations.ts     copy/move/delete/trash/rename/newFolder/link/restore/emptyTrash
                            long ops: 'begin'|'progress'|'done'; quick: 'notify'; 'error'
-    clipboard-service.ts   copy/cut state; 'changed'
+    undo-service.ts        pure undo/redo stack of inverse closures; 'changed'
+    thumbnail-service.ts   shared: fd-cache lookup + GdkPixbuf generation (idle); exports `thumbnails`
+    archive-service.ts     extract/compress via CLI tools (ProcessStream); 'begin'|'done'|'error'
+    clipboard-service.ts   in-app copy/cut state; 'changed' (system clipboard: ui/dnd.ts)
     places-service.ts      getPlaces()/getBookmarks()/getDevices() -> Place[]
+    window-state.ts        persist/restore window geometry (JSON under user config dir)
   workers/
-    search-worker.ts       pure-node recursive walker -> JSON path per line on stdout
+    search-worker.ts       pure-node BREADTH-FIRST walker -> JSON path per line on stdout
   ui/                      widgets only
-    file-view.ts           grid+list+state stack; typeahead; sorted incremental insert
-    cells.ts               grid/column cell factories
+    file-view.ts           grid+list+state stack; typeahead; sorted insert; drop target
+    floating-bar.ts        overlay status pill (typeahead indicator) — NautilusFloatingBar
+    cells.ts               grid/column cell factories; thumbnails; per-cell drag source
     sidebar.ts             places view (over places-service)
-    toolbar.ts             header: history / pathbar|location|search / view menu
+    toolbar.ts             header: history / pathbar|location|search+filter / view menu
     pathbar.ts             breadcrumb buttons
-    dialogs.ts             prompt / confirm / properties / about (Adw)
+    dialogs.ts             prompt / confirm / properties (+folder size) / about (Adw)
+    context-menu.ts        buildContextMenu(): pure Gio.Menu model for the view
+    shortcuts.ts           Adw.ShortcutsDialog (data-driven, mirrors shortcuts-dialog.blp)
+    preferences.ts         Adw.PreferencesDialog over prefs (view/sort/hidden)
+    batch-rename.ts        multi-select rename (find/replace | numbered) + live preview
+    search-filter.ts       search popover (What/When) -> SearchFilter
+    compress.ts            compress dialog (name + format)
+    open-with.ts           app chooser over Gio.AppInfo.getRecommendedForType
+    dnd.ts                 DragSource / DropTarget + system-clipboard content provider
+    style.ts, style.css    app stylesheet (adapted from ../nautilus/src/resources/style.css)
   tab.ts                   Tab controller: binds DirectoryService+SearchService <-> FileView
   window.ts                AppWindow: shell assembly, GAction wiring, op progress UI
   main.ts                  Adw.Application, accelerators, GLib.MainLoop lifecycle
@@ -197,54 +230,102 @@ Services can be tested headless against `/tmp` dirs (see prior `/tmp/*.mjs`).
 
 ---
 
+## 5b. Fidelity pass (reference `../nautilus`)
+
+Goal: match GNOME Files' behaviour/look as closely as possible, using the
+checked-out nautilus source at `../nautilus` as the reference for UI + CSS.
+
+- [x] **Breadth-first search.** Worker walks a FIFO queue (like
+  `nautilus-search-engine-simple.c`: `g_queue_push_tail`/`pop_head`) instead of
+  recursing depth-first, so matches nearest the search root surface first.
+  `src/workers/search-worker.ts`.
+- [x] **Typeahead indicator.** Bottom-right floating pill showing the current
+  typeahead query, mirroring `NautilusFloatingBar` (`halign/valign: end`,
+  `.floating-bar` CSS). New `src/ui/floating-bar.ts`; wired in `file-view.ts`.
+- [x] **App stylesheet.** `src/ui/style.ts` loads `src/ui/style.css` (adapted
+  from `../nautilus/src/resources/style.css`) at application priority.
+- [x] **Grid/list cell padding.** `.nautilus-grid-view`/`.nautilus-list-view`
+  on the scrollers, `.nautilus-view-cell` on cell boxes — CSS ported near-verbatim
+  from nautilus (grid: 18px pad + 6px spacing + rounded 6px cells; list: 24px
+  inset + 8px row spacing + rounded rows; neutral-grey selection; hidden-file
+  dimming). `style.css` + `cells.ts` + `file-view.ts`.
+- [x] **Keyboard shortcuts.** Full accel table in `main.ts` (matches nautilus:
+  Ctrl+1/2 views, Ctrl+0 reset zoom, Alt+Home, Ctrl+Shift+I invert, Ctrl+Page
+  Up/Down tabs, Ctrl+M link, Ctrl+Z/Y undo/redo, Ctrl+, prefs, Ctrl+? shortcuts).
+  Shortcuts window (`win.shortcuts`) built data-driven from `src/ui/shortcuts.ts`
+  via `Adw.ShortcutsDialog` (mirrors `shortcuts-dialog.blp`).
+- [x] **Undo/redo.** Pure stack `src/services/undo-service.ts`; the window
+  records inverse closures (rename↔rename, newFolder→trash, copy→trash,
+  move→move-back, trash↔restore, link→trash). `copy`/`move` now return their
+  destination GFiles; `file-operations.ts` gained `restoreFromTrash` (matches by
+  `trash::orig-path`). Trash toast carries an “Undo” button. Verified: rename
+  and trash→restore round-trip.
+- [x] **Preferences dialog** (`win.preferences`, `src/ui/preferences.ts`) —
+  `Adw.PreferencesDialog` editing view/sort/hidden, writing through the same
+  paths as the header actions.
+
 ## 6. Next points (P2/P3)
 
-Roughly priority-ordered. Each notes where it hooks in.
+### Done (this pass — each verified per §5)
 
-1. **Thumbnails** for images/video. Add a `services/thumbnail-service.ts`
-   (GnomeDesktop.DesktopThumbnailFactory, or generate via GdkPixbuf/glycin) that
-   resolves a `GdkTexture` per file async; `cells.ts` bind swaps the icon when
-   ready. Cache by uri+mtime.
-2. **Undo/redo** of operations. Give `file-operations.ts` an undo stack
-   (record inverse ops: trash↔restore, move-back, delete-created). Wire
-   `win.undo`/`win.redo` (Ctrl+Z/Y) + toast "Undo" action after trash.
-3. **System clipboard + DnD.** Current clipboard is in-app only. Implement
-   `Gdk.ContentProvider` with `text/uri-list` + `x-special/gnome-copied-files`
-   for real cut/copy/paste across apps; add `Gtk.DragSource` on cells and
-   `Gtk.DropTarget` on the view (accept `Gdk.FileList` → move/copy into dir).
-   Verify content-provider marshalling in node-gtk first.
-4. **Archive extract/compress.** `services/archive-service.ts` shelling to
-   `libarchive`/`tar`/`unzip` via `ProcessStream` (streams progress). Context-menu
-   items `extract-here` / `compress…` (compress dialog exists in nautilus blp).
-5. **Rich search** (nautilus search popover): filter by date range / file type,
-   content search. Extend `search-worker.ts` args + a popover under the search
-   entry in `toolbar.ts`.
-6. **Batch rename** dialog (nautilus-batch-rename): multi-select → find/replace or
-   numbered template. New dialog in `ui/dialogs.ts` + `file-operations` batch.
-7. **Preferences** (`app.preferences`) and **Keyboard Shortcuts** window
-   (`app.shortcuts`) — currently unimplemented app actions.
-8. **Properties**: editable permissions, folder content-size calc (async walk),
-   open-with default chooser.
-9. **Trash UX**: show an "Empty Trash" / "Restore" bar when viewing `trash:///`
-   (the `win.empty-trash` action exists but has no entry point yet); per-item
-   Restore.
-10. **Column chooser / captions**, **set as wallpaper**, **compress**, **open in
-    terminal** — smaller context-menu items nautilus has.
+1. [x] **Thumbnails** — `services/thumbnail-service.ts` (shared `thumbnails`):
+   freedesktop cache lookup (md5(uri) in `~/.cache/thumbnails/{large,normal}`)
+   then GdkPixbuf generation on a low-prio idle, cached by uri+mtime; `cells.ts`
+   bind swaps the icon in (guarded against cell recycling). Verified on `~/img`.
+2. [x] **Undo/redo** — see §5b.
+3. [x] **System clipboard + DnD** — `ui/dnd.ts`: `fileClipboardProvider`
+   (union of `x-special/gnome-copied-files` + `text/uri-list`) set on the widget
+   clipboard on cut/copy; `_pasteFromSystem` reads uri-list when the in-app
+   clipboard is empty; `makeDragSource` (per cell) drags a `GdkFileList` out;
+   `makeDropTarget` (on the view) copies dropped files in. Clipboard formats
+   verified; **drag/drop gestures not headlessly verifiable** (no compositor).
+4. [x] **Archive extract/compress** — `services/archive-service.ts` shells to
+   `unzip`/`tar`/`7z`/`unar` via `ProcessStream` (now supports `cwd`).
+   Context-menu `Extract Here` / `Compress…` (`ui/compress.ts`). Roundtrip verified.
+5. [x] **Rich search** — `ui/search-filter.ts` funnel popover (What=category,
+   When=window) → `SearchFilter` applied in `search-service.ts` at resolve time
+   (worker stays name-only + breadth-first). Category=folder verified.
+6. [x] **Batch rename** — `ui/batch-rename.ts` (find/replace | numbered) with live
+   preview; `win.rename` routes to it for multi-selection; undoable.
+7. [x] **Preferences + Keyboard Shortcuts** — see §5b.
+8. [~] **Properties** — folder content-size + item counts via async walk
+   (`core/measure.ts`), updating live. `Open With…` chooser is a separate
+   context-menu item (`ui/open-with.ts`). *Editable permissions still TODO.*
+9. [x] **Trash UX** — `Adw.Banner` with Empty Trash when viewing `trash:///`;
+   trash-specific context menu (`Restore From Trash` / `Delete Permanently`),
+   `win.restore` via `trash::orig-path`. Verified.
+10. [~] **Smaller items** — `Set as Wallpaper` (images), `Open in Terminal`
+    (background), `Open in New Tab` (folders, Ctrl+Return), `Open With…` — all
+    wired. *Column chooser / captions still TODO (see below).*
+
+### Remaining
+
+- **Column chooser / captions** — let the user choose which list columns show
+  and grid caption lines. Needs dynamic `Gtk.ColumnViewColumn` visibility.
+- **Editable permissions** in Properties (chmod via `info`/`F.setAttribute`).
+- **Content (full-text) search** — worker only matches names.
 
 ---
 
 ## 7. Known limitations / rough edges
 
-- **Clipboard is in-app only**; no DnD (see next-point 3).
-- **No rubber-band selection** — `Gtk.GridView`/`ColumnView` don't provide it
-  (nautilus implements a custom one). Ctrl/Shift-click + Ctrl+A work.
-- **`link` op** exists in `file-operations.ts` but has no menu/action yet.
-- **`empty-trash` action** exists but no UI entry point.
-- **Icons only** (no thumbnails).
+- **Clipboard**: cut/copy publish to the system clipboard (uri-list +
+  gnome-copied-files) so paste works in other file managers; inbound paste from
+  another app is best-effort (uri-list text). **DnD** drag/drop is implemented
+  but was only construction-verified — gesture behaviour needs a real compositor.
+- **Batch rename** applies renames directly; a target name colliding with another
+  selected item's *old* name will error (no temp-name shuffling).
+- **Rubber-band selection** uses GTK's built-in `enable-rubberband` (like
+  nautilus). An item-press guard disables it during item drags so DnD still works
+  (GTK issue 5670), re-enabling on release. Like DnD, the drag gesture itself
+  isn't headlessly verifiable — the property/toggle are.
+- **Thumbnails**: images only (no video/PDF generation); uses the shared
+  freedesktop cache for other types when already present. Not persisted back.
+- **`empty-trash`** also reachable from the Trash banner / context menu.
 - XDG special dirs are hidden when they resolve to `$HOME` (this machine's config).
-- Search matches **name only**.
-- Large single-file copies show a **pulsing** (indeterminate) progress bar, not a
-  percentage (total is discovered as the job runs).
+- Search matches **name only** (category/date filters apply on top).
+- Large single-file copies + archive ops show a **pulsing** (indeterminate)
+  progress bar, not a percentage.
 - `tsc` isn't vendored — `npm install` before `npm run typecheck`. The app runs
   without it (types are stripped at load).
 

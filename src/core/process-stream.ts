@@ -12,21 +12,29 @@ import { EventEmitter } from './emitter.ts'
  * never emits blank lines (ours emits JSON-encoded paths). */
 export class ProcessStream extends EventEmitter {
   argv: string[]
+  cwd?: string
   cancelled = false
   proc: any = null
   _stderr = ''
   _outDone = false
   _errDone = false
 
-  constructor(argv: string[]) {
+  constructor(argv: string[], opts: { cwd?: string } = {}) {
     super()
     this.argv = argv
+    this.cwd = opts.cwd
   }
 
   start(): this {
     try {
       const flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
-      this.proc = Gio.Subprocess.new(this.argv, flags)
+      if (this.cwd) {
+        const launcher = Gio.SubprocessLauncher.new(flags)
+        launcher.setCwd(this.cwd)
+        this.proc = launcher.spawnv(this.argv)
+      } else {
+        this.proc = Gio.Subprocess.new(this.argv, flags)
+      }
     } catch (e: any) {
       GLib.idleAdd(GLib.PRIORITY_DEFAULT, () => {
         this.emit('error', `Failed to start: ${e.message}`)

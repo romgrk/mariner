@@ -19,6 +19,7 @@ export const ATTRS = [
   'standard::size', 'standard::content-type', 'standard::is-hidden',
   'standard::is-backup', 'standard::is-symlink', 'standard::target-uri',
   'time::modified', 'access::can-write', 'access::can-execute',
+  'trash::orig-path', 'trash::deletion-date',
 ].join(',')
 
 export function fileForPath(path: string): GFile { return Gio.File.newForPath(path) }

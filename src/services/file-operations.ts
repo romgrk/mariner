@@ -107,16 +107,22 @@ class Job {
  * new-folder/link) emit 'notify' {message} instead. Both emit 'error'
  * {title,message} on failure. */
 export class FileOperations extends EventEmitter {
-  copy(files: GFile[], destDir: GFile): void {
+  /* copy/move return the destination GFiles (collision-resolved up front) so the
+   * caller can record a precise inverse for undo. */
+  copy(files: GFile[], destDir: GFile): GFile[] {
+    const dests = files.map(f => uniqueChild(destDir, F.getBasename(f)))
     const job = new Job(`Copying ${files.length} item${files.length > 1 ? 's' : ''}`, this)
-    for (const f of files) job.push(job.copyStep(f, uniqueChild(destDir, F.getBasename(f))))
+    files.forEach((f, i) => job.push(job.copyStep(f, dests[i])))
     job.run()
+    return dests
   }
 
-  move(files: GFile[], destDir: GFile): void {
+  move(files: GFile[], destDir: GFile): GFile[] {
+    const dests = files.map(f => uniqueChild(destDir, F.getBasename(f)))
     const job = new Job(`Moving ${files.length} item${files.length > 1 ? 's' : ''}`, this)
-    for (const f of files) job.push(job.moveStep(f, uniqueChild(destDir, F.getBasename(f))))
+    files.forEach((f, i) => job.push(job.moveStep(f, dests[i])))
     job.run()
+    return dests
   }
 
   deletePermanently(files: GFile[]): void {
@@ -140,6 +146,35 @@ export class FileOperations extends EventEmitter {
     const n = files.length
     return this._quick('Move to Trash', () => files.forEach((f: GFile) => F.trash(f, null)),
       `Moved ${n} item${n > 1 ? 's' : ''} to Trash`)
+  }
+
+  /* Restore selected Trash items to their original locations, given each item's
+   * trash::orig-path (used by the Trash view's Restore action). */
+  restore(pairs: Array<[GFile, string]>): boolean {
+    const n = pairs.length
+    return this._quick('Restore', () => {
+      for (const [item, orig] of pairs) F.move(item, Gio.File.newForPath(orig), NONE, null, null)
+    }, `Restored ${n} item${n > 1 ? 's' : ''}`)
+  }
+
+  /* Restore items from Trash to their original locations (undo of trash), matched
+   * by trash::orig-path. */
+  restoreFromTrash(origFiles: GFile[]): boolean {
+    const wanted = new Set(origFiles.map(f => F.getPath(f)))
+    const n = origFiles.length
+    return this._quick('Restore', () => {
+      const trash = Gio.File.newForUri('trash:///')
+      const en = F.enumerateChildren(trash, 'standard::name,trash::orig-path', NONE, null)
+      let info
+      while ((info = en.nextFile(null)) !== null) {
+        const orig = info.getAttributeByteString('trash::orig-path')
+        if (orig && wanted.has(orig)) {
+          F.move(F.getChild(trash, info.getName()), Gio.File.newForPath(orig), NONE, null, null)
+          wanted.delete(orig)
+        }
+      }
+      en.close(null)
+    }, `Restored ${n} item${n > 1 ? 's' : ''}`)
   }
   newFolder(dir: GFile, name: string): GFile {
     const folder = F.getChild(dir, name)
