@@ -280,4 +280,4 @@ notes.
 
 ## License
 
-[MIT](LICENSE) © Rom Grk
+[GPL-3.0-or-later](LICENSE) © Rom Grk

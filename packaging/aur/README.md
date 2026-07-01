@@ -85,8 +85,9 @@ Everything else (depends, makedepends, build, package) is identical.
   chroot (e.g. `makechrootpkg`) or with the system `nodejs` on `PATH` so the two
   match — not, say, an `nvm` Node. After a major Arch Node upgrade, rebuild the
   package. (`nodejs>=22.18` is required for unflagged TypeScript stripping.)
-- **License.** The project is MIT-licensed (`LICENSE` at the repo root); the
-  PKGBUILD declares `license=('MIT')` to match.
+- **License.** The project is GPL-3.0-or-later (`LICENSE` at the repo root); the
+  PKGBUILD declares `license=('GPL-3.0-or-later')`. GPLv3 is a standard SPDX
+  license, so — like GNOME Files — the package does not bundle its own copy.
 - **Network during `build()`.** `npm install` fetches `node-gtk` from the
   registry — standard for Node-based AUR packages, but it means the build is not
   fully offline/reproducible.
