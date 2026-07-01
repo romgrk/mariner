@@ -1,7 +1,19 @@
-# Mariner
+<h1 align="center">
+  Mariner
+</h1>
 
-**A file manager that feels exactly like GNOME Files — and finally has the power
-features it always refused to add.**
+<p align="center">
+  <b>GNOME Files, plus everything the issue tracker rejected.</b>
+</p>
+
+<p align="center">
+  <a href="#the-big-features">Features</a> ·
+  <a href="#everything-thats-different-from-gnome-files">vs. GNOME Files</a> ·
+  <a href="#not-yet-supported">Not yet supported</a> ·
+  <a href="#install">Install</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="#contributing">Contributing</a>
+</p>
 
 Mariner is a native GTK4 + libadwaita file manager for the GNOME desktop. It
 drives the same widgets as [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus)
