@@ -11,6 +11,7 @@ import type { GFileInfo } from '../core/types.ts'
 export interface CellContext {
   iconSize: () => number
   attachMenu: (widget: any, item: any) => void
+  isCut: (info: GFileInfo) => boolean
 }
 
 type Formatter = (info: GFileInfo) => string
@@ -20,6 +21,12 @@ function toggleHidden(widget: any, info: GFileInfo): void {
   const hidden = info.getIsHidden() || info.getIsBackup()
   if (hidden) widget.addCssClass('hidden-file')
   else widget.removeCssClass('hidden-file')
+}
+
+/* Fade cells whose file is on the clipboard as a cut (nautilus dims cut files
+ * until they're pasted). Applied on the cell box so icon + label both dim. */
+function applyCut(box: any, info: GFileInfo, ctx: CellContext): void {
+  box.setOpacity(ctx.isCut(info) ? 0.45 : 1)
 }
 
 /* Swap in a thumbnail once resolved. Guards against cell recycling by tagging
@@ -67,12 +74,13 @@ export function gridFactory(ctx: CellContext): any {
     else image.setFromIconName('text-x-generic')
     box.getLastChild().setLabel(displayName(info))
     toggleHidden(box, info)
+    applyCut(box, info, ctx)
     applyThumbnail(image, info)
   })
   return factory
 }
 
-export function nameColumn(ctx: CellContext): any {
+export function nameCellFactory(ctx: CellContext): any {
   const factory = new Gtk.SignalListItemFactory()
   factory.on('setup', (item: any) => {
     const box = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 8 })
@@ -92,9 +100,14 @@ export function nameColumn(ctx: CellContext): any {
     if (icon) image.setFromGicon(icon)
     box.getLastChild().setLabel(displayName(info))
     toggleHidden(box, info)
+    applyCut(box, info, ctx)
     applyThumbnail(image, info)
   })
-  const col = new Gtk.ColumnViewColumn({ title: 'Name', factory })
+  return factory
+}
+
+export function nameColumn(ctx: CellContext): any {
+  const col = new Gtk.ColumnViewColumn({ title: 'Name', factory: nameCellFactory(ctx) })
   col.setExpand(true)
   return col
 }

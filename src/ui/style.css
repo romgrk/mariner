@@ -7,6 +7,58 @@
  *   .hidden-file                               on cells for hidden/backup files
  */
 
+/* ---- Path bar (breadcrumb) ---- */
+/* Ported near-verbatim from nautilus src/resources/style.css. */
+.nautilus-pathbar {
+  background-color: color-mix(in srgb, currentColor 10%, transparent);
+  border-radius: 9px;
+}
+
+.nautilus-pathbar > menubutton {
+  margin: 0px;
+}
+
+/* Fade + hairline at the scroll edges when crumbs overflow. */
+.nautilus-pathbar > scrolledwindow undershoot.left {
+  background: linear-gradient(to right, var(--headerbar-shade-color) 6px, transparent 24px);
+  border-left: solid 1px var(--border-color);
+}
+.nautilus-pathbar > scrolledwindow undershoot.right {
+  background: linear-gradient(to left, var(--headerbar-shade-color) 6px, transparent 24px);
+  border-right: solid 1px var(--border-color);
+}
+/* Match the sidebar's rounded corners on the "start" side. */
+.nautilus-pathbar > scrolledwindow:dir(ltr) undershoot.left {
+  border-radius: 9px 0px 0px 9px;
+}
+.nautilus-pathbar > scrolledwindow:dir(rtl) undershoot.right {
+  border-radius: 0px 9px 9px 0px;
+}
+
+.nautilus-path-button {
+  margin: 3px;
+  min-width: 8px;
+  border-radius: 7px;
+  padding-top: 0px;
+  padding-bottom: 0px;
+}
+
+.nautilus-path-button:not(:hover),
+.nautilus-path-button.current-dir {
+  background: none;
+}
+
+.nautilus-path-button:not(.current-dir):not(:backdrop):hover label,
+.nautilus-path-button:not(.current-dir):not(:backdrop):hover image {
+  opacity: 1;
+}
+
+/* nautilus applies PANGO_WEIGHT_BOLD to the crumb label (not the "/" separator,
+ * which lives outside the button). */
+.nautilus-path-button label {
+  font-weight: bold;
+}
+
 /* ---- Floating status bar (typeahead indicator / status pill) ---- */
 .floating-bar {
   padding: 3px;

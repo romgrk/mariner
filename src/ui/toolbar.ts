@@ -9,6 +9,9 @@ import type { GFile, ViewMode, SearchFilter } from '../core/types.ts'
 
 export interface ToolbarHandlers {
   onNavigate: (file: GFile) => void
+  onOpenTab: (file: GFile) => void
+  onOpenWindow: (file: GFile) => void
+  onProperties: (file: GFile) => void
   onLocationEntry: (text: string) => void
   onSearchChanged: (text: string) => void
   onSearchFilter: (f: SearchFilter) => void
@@ -27,7 +30,7 @@ export interface Toolbar {
 
 /* Content-area header bar: history, breadcrumb/location/search stack, view
  * controls, new-folder. Buttons drive win.* actions defined by the window. */
-export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged, onSearchFilter, onSearchExit }: ToolbarHandlers): Toolbar {
+export function createToolbar({ onNavigate, onOpenTab, onOpenWindow, onProperties, onLocationEntry, onSearchChanged, onSearchFilter, onSearchExit }: ToolbarHandlers): Toolbar {
   const header = new Adw.HeaderBar()
 
   /* History controls */
@@ -36,10 +39,9 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged, on
   histBox.append(iconButton('go-previous-symbolic', 'Back', 'win.back'))
   histBox.append(iconButton('go-next-symbolic', 'Forward', 'win.forward'))
   header.packStart(histBox)
-  header.packStart(iconButton('go-up-symbolic', 'Up', 'win.up'))
 
   /* Title: pathbar | location-entry | search */
-  const pathbar = createPathBar(onNavigate)
+  const pathbar = createPathBar({ onNavigate, onOpenTab, onOpenWindow, onProperties })
 
   const locationEntry = new Gtk.Entry({ hexpand: true })
   locationEntry.on('activate', () => onLocationEntry(locationEntry.getText()))
@@ -67,26 +69,26 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged, on
   searchBox.append(searchEntry)
   searchBox.append(filterButton.widget)
 
-  const titleStack = new Gtk.Stack({ transitionType: Gtk.StackTransitionType.CROSSFADE })
-  titleStack.addNamed(wrapCenter(pathbar.widget), 'pathbar')
+  const titleStack = new Gtk.Stack({ transitionType: Gtk.StackTransitionType.CROSSFADE, hexpand: true })
+  titleStack.addNamed(pathbar.widget, 'pathbar')
   titleStack.addNamed(locationBox, 'location')
   titleStack.addNamed(searchBox, 'search')
 
   const searchButton = new Gtk.ToggleButton({ iconName: 'edit-find-symbolic', tooltipText: 'Search Current Folder' })
 
-  const titleBox = new Gtk.Box({ spacing: 6, halign: Gtk.Align.CENTER })
-  titleBox.append(titleStack)
-  titleBox.append(searchButton)
-  header.setTitleWidget(titleBox)
-
-  /* End: view controls + new folder */
   const viewButton = new Adw.SplitButton({
     iconName: 'view-grid-symbolic', menuModel: buildViewMenu(), tooltipText: 'View Options',
   })
   viewButton.setActionName('win.toggle-view')
 
+  /* AdwHeaderBar reserves symmetric space around the (hexpanding) title equal to
+   * the wider of the two sides, so any imbalance shows up as a gap on the lighter
+   * side. Balance the sides — search toggle on the start next to history, view
+   * controls on the end next to the window buttons — so the path/search stack
+   * fills the full width edge-to-edge with no gap. */
+  header.packStart(searchButton)
   header.packEnd(viewButton)
-  header.packEnd(iconButton('folder-new-symbolic', 'New Folder', 'win.new-folder'))
+  header.setTitleWidget(titleStack)
 
   function showStack(name: string): void { titleStack.setVisibleChildName(name) }
   function setViewIcon(mode: ViewMode): void {
@@ -100,12 +102,6 @@ export function createToolbar({ onNavigate, onLocationEntry, onSearchChanged, on
 function iconButton(iconName: string, tooltip: string, actionName: string | null): any {
   const b = new Gtk.Button({ iconName, tooltipText: tooltip })
   if (actionName) b.setActionName(actionName)
-  return b
-}
-
-function wrapCenter(child: any): any {
-  const b = new Gtk.Box({ halign: Gtk.Align.CENTER, valign: Gtk.Align.CENTER })
-  b.append(child)
   return b
 }
 

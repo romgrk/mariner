@@ -7,7 +7,7 @@ import Gdk from 'gi:Gdk-4.0'
 
 import { Tab } from './tab.ts'
 import { ACCELS } from './accels.ts'
-import { F, fileForPath, fileForUri } from './core/gio.ts'
+import { F, fileForPath, fileForUri, ATTRS } from './core/gio.ts'
 import { HOME, locationName, isDirectory, displayName } from './core/format.ts'
 import { ClipboardService } from './services/clipboard-service.ts'
 import { FileOperations } from './services/file-operations.ts'
@@ -47,6 +47,7 @@ export class AppWindow {
   archive = new ArchiveService()
   _pasteTarget: GFile | null = null
   _pulseTimer = 0
+  _cutUris = new Set<string>()
 
   window!: any
   toastOverlay!: any
@@ -126,6 +127,9 @@ export class AppWindow {
     /* Content */
     this.toolbar = createToolbar({
       onNavigate: (file: GFile) => this.navigate(file),
+      onOpenTab: (file: GFile) => this.openTab(file),
+      onOpenWindow: (file: GFile) => new AppWindow(this.app, file),
+      onProperties: (file: GFile) => this._propertiesFor(file),
       onLocationEntry: (text: string) => this.openPath(text),
       onSearchChanged: (text: string) => this.activeTab?.setSearchQuery(text),
       onSearchFilter: (f) => this.activeTab?.setSearchFilter(f),
@@ -204,6 +208,12 @@ export class AppWindow {
     this.undo.on('changed', () => {
       this.undoAction.setEnabled(this.undo.canUndo)
       this.redoAction.setEnabled(this.undo.canRedo)
+    })
+
+    /* Track cut files so the view can dim them until pasted. */
+    this.clipboard.on('changed', () => {
+      this._cutUris = new Set(this.clipboard.cut ? this.clipboard.files.map(f => F.getUri(f)) : [])
+      this.activeTab?.view.refreshCells()
     })
 
     /* Archive ops report begin/done/error; drive the same progress bar with a
@@ -412,7 +422,10 @@ export class AppWindow {
       r.x = Math.round(x); r.y = Math.round(y); r.width = 1; r.height = 1
       pop.setPointingTo(r)
     } catch {}
-    pop.on('closed', () => pop.unparent())
+    /* Defer unparent: GtkPopoverMenu activates the chosen item's action *after*
+     * it closes, so detaching synchronously here would strand the action group
+     * and the action would never fire. */
+    pop.on('closed', () => GLib.timeoutAdd(GLib.PRIORITY_DEFAULT_IDLE, 100, () => { try { pop.unparent() } catch {} return false }))
     pop.popup()
   }
 
@@ -616,6 +629,14 @@ export class AppWindow {
   _properties(): void {
     const sel = this._selected()
     if (sel[0]) showProperties(this.window, sel[0].info, sel[0].file)
+  }
+
+  /* Properties for an arbitrary file (used by the pathbar crumb menu). */
+  _propertiesFor(file: GFile): void {
+    try {
+      const info = F.queryInfo(file, ATTRS, Gio.FileQueryInfoFlags.NONE, null)
+      showProperties(this.window, info, file)
+    } catch {}
   }
 
   _extractHere(): void {

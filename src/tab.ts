@@ -27,7 +27,8 @@ export class Tab {
     this.view = new FileView()
     this.view.onActivate = (info, f) => win.onItemActivated(this, info, f)
     this.view.onContextMenu = (w, x, y, target) => win.showContextMenu(this, w, x, y, target)
-    this.view.onDropFiles = files => win.onDropFiles(this, files)
+    this.view.onDropFiles = (files, targetDir) => win.onDropFiles(this, files, targetDir)
+    this.view.isCutFile = f => win._cutUris.has(F.getUri(f))
 
     this.dir = new DirectoryService()
     this.search = new SearchService()

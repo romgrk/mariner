@@ -263,6 +263,25 @@ checked-out nautilus source at `../nautilus` as the reference for UI + CSS.
 - [x] **Preferences dialog** (`win.preferences`, `src/ui/preferences.ts`) —
   `Adw.PreferencesDialog` editing view/sort/hidden, writing through the same
   paths as the header actions.
+- [x] **Path bar (location bar)** — `src/ui/pathbar.ts` rewritten as a faithful
+  port of `nautilus-pathbar.c`: a `.linked.nautilus-pathbar` box wrapping a
+  horizontal `Gtk.ScrolledWindow` (EXTERNAL/NEVER, natural-width, auto-scrolls to
+  reveal the current folder, vertical wheel → horizontal scroll) of crumb
+  buttons, plus a trailing `view-more` menu button. Special roots (filesystem =
+  OS name via `g_get_os_info`, Home, Trash, Recent, Starred, Network, mounts)
+  render as icon + bold label; normal folders as a dim `/` separator + bold
+  label; ancestors are dim-labelled, the current dir gets `.current-dir` and
+  opens the location entry (`win.location`) on click. Middle-click → new tab,
+  Ctrl+click → new window, right-click → `pathbar.*` context menu (Open in New
+  Window/Tab, Properties). Middle-ellipsize (7-char floor, 28 for current). CSS
+  ported to `src/ui/style.css` (`.nautilus-pathbar`, `.nautilus-path-button`,
+  `.current-dir`, scroll-edge undershoot fades). Header layout (`toolbar.ts`):
+  the path/search stack is the hexpanding title widget and fills the full width.
+  AdwHeaderBar reserves symmetric space around the title equal to the wider side,
+  so the start/end are balanced to avoid gaps: start = back/forward history +
+  search toggle; end = view controls (next to the window buttons). No "Up" or
+  "New Folder" buttons; the crumb context menu still exposes New Folder via
+  `win.new-folder`.
 
 ## 6. Next points (P2/P3)
 
@@ -304,6 +323,71 @@ checked-out nautilus source at `../nautilus` as the reference for UI + CSS.
   and grid caption lines. Needs dynamic `Gtk.ColumnViewColumn` visibility.
 - **Editable permissions** in Properties (chmod via `info`/`F.setAttribute`).
 - **Content (full-text) search** — worker only matches names.
+
+---
+
+## 6b. Differentiator features (proposed — draw users over)
+
+Parity with nautilus is essentially reached. These are *net-new* features
+targeting the things nautilus users complain nautilus refuses to add. Ordered by
+expected draw; each notes how it fits the existing architecture. None are
+implemented yet.
+
+### Headline three (highest draw)
+
+1. **Dual-pane / split view** — two file views side-by-side, copy/move/drag
+   between them, Tab to switch the focused pane. The single most-requested
+   nautilus feature (rejected upstream for a decade); the reason people run
+   Krusader/Dolphin/Total Commander. **Fit:** a `Tab` already binds one
+   `DirectoryService`+`SearchService` to one `FileView`; a split is two of those
+   in an `Adw` paned layout plus a shared "active pane" concept so the toolbar /
+   GActions target the focused side. *High effort, highest draw.*
+2. **Space-to-preview (Quick Look)** — Space on a selection opens a fast preview
+   overlay (images, syntax-highlighted text/code, rendered markdown, PDF,
+   audio/video), arrow keys move through the selection. macOS Finder's best
+   feature; nautilus's `sushi` equivalent is weak/often absent. **Fit:** an
+   overlay widget (reuse the `floating-bar.ts` overlay pattern) + a per-type
+   renderer registry; the thumbnail cache already exists for images.
+   *Medium effort, very high draw.*
+3. **Git-aware file view** — status badges on files/folders
+   (modified/untracked/staged), current branch in the pathbar, `.gitignore`
+   dimming. Converts developers on its own. **Fit:** a new
+   `services/git-service.ts` (shell `git status --porcelain=v2 -z` per repo,
+   cache by dir, invalidate via the existing `FileMonitor`) + a badge in
+   `cells.ts`.
+
+### Strong second tier
+
+- **Command palette (Ctrl+P / Ctrl+Shift+P)** — fuzzy-jump to any folder and run
+  any action from the keyboard ("VS Code for files"). **Fit:** a searchable
+  popover over recent/bookmarked paths + the existing GActions; typeahead
+  matching logic already exists.
+- **Content (full-text) search** — wire `ripgrep` into the existing
+  out-of-process worker model (`workers/search-worker.ts` already streams
+  results), with match previews. Also listed under §6 Remaining.
+- **Tags / colored labels** — cross-folder organization (Finder-style), stored
+  as xattrs (`user.xdg.tags`) or a sidecar SQLite; feeds tag-based smart
+  searches.
+- **Saved searches / smart folders** — a persisted query (name + `SearchFilter`
+  + tags) shown in the sidebar and re-run live. `SearchFilter` is already
+  serializable.
+
+### Nice differentiators (lower effort)
+
+- **Disk-usage treemap** — a treemap/sunburst view mode built on the existing
+  async recursive `core/measure.ts` walk (absorbs a Baobab/WinDirStat-style app).
+- **Miller columns** — a third view mode (macOS column browser / ranger-style)
+  with strong keyboard navigation; nautilus lacks it.
+- **Better conflict resolution + operations queue** — a per-file collision
+  dialog (replace / keep-both / skip, apply-to-all) and a pause/resume/cancel
+  operations queue, replacing the single pulsing progress bar.
+- **Custom actions / scripting menu** — user-defined context-menu commands with
+  token substitution (`%f`, `%u`, selection). Cheap extensibility hook.
+- **Duplicate finder** — hash-based, surfaced as a smart view.
+
+**Bet:** split view + git awareness + space-to-preview is a combination no
+mainstream Linux file manager ships together. Fastest path to a visible "whoa":
+space-to-preview or git badges.
 
 ---
 

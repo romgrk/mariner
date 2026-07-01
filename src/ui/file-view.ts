@@ -7,7 +7,7 @@ import { FILE_INFO_TYPE } from '../core/gio.ts'
 import { displayName, isDirectory } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
-import { gridFactory, nameColumn, metaColumn, COLUMNS } from './cells.ts'
+import { gridFactory, nameColumn, nameCellFactory, metaColumn, COLUMNS } from './cells.ts'
 import type { CellContext } from './cells.ts'
 import { FloatingBar } from './floating-bar.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
@@ -31,9 +31,11 @@ export class FileView {
   onActivate: ActivateHandler = () => {}
   onContextMenu: ContextMenuHandler = () => {}
   onDropFiles: (files: GFile[], targetDir?: GFile) => void = () => {}
+  isCutFile: (file: GFile) => boolean = () => false
 
   gridView: any
   columnView: any
+  nameCol: any
   gridScroller: any
   listScroller: any
   viewStack: any
@@ -60,7 +62,8 @@ export class FileView {
 
     this.columnView = new Gtk.ColumnView({ model: this.selection, vexpand: true, enableRubberband: true })
     this.columnView.addCssClass('rich-list')
-    this.columnView.appendColumn(nameColumn(ctx))
+    this.nameCol = nameColumn(ctx)
+    this.columnView.appendColumn(this.nameCol)
     for (const [title, fmt, right] of COLUMNS) this.columnView.appendColumn(metaColumn(title, fmt, right))
     this.columnView.on('activate', (...a: any[]) => this._activate(a[a.length - 1]))
 
@@ -198,9 +201,20 @@ export class FileView {
     return out
   }
 
+  /* Re-run the cell factories to reflect state that isn't in the model (e.g. the
+   * cut/clipboard dimming). Rebinds visible cells; selection is preserved. */
+  refreshCells(): void {
+    this.gridView.setFactory(gridFactory(this._cellContext()))
+    this.nameCol.setFactory(nameCellFactory(this._cellContext()))
+  }
+
   /* ---- internals ---- */
   _cellContext(): CellContext {
-    return { iconSize: () => this.iconSize, attachMenu: (w, item) => this._attachMenu(w, item) }
+    return {
+      iconSize: () => this.iconSize,
+      attachMenu: (w, item) => this._attachMenu(w, item),
+      isCut: info => this.isCutFile(info._file),
+    }
   }
 
   _settle(): void {
