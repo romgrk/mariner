@@ -1,7 +1,10 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import Gio from 'gi:Gio-2.0'
+import Gdk from 'gi:Gdk-4.0'
+import GLib from 'gi:GLib-2.0'
 import { FILE_INFO_TYPE } from '../core/gio.ts'
+import { displayName } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, metaColumn, COLUMNS } from './cells.ts'
@@ -33,6 +36,8 @@ export class FileView {
   _errorPage: any
   _loading = false
   _emptyKind: EmptyKind = 'folder'
+  _typeahead = ''
+  _typeaheadTimer = 0
 
   constructor() {
     this.store = Gio.ListStore.new(FILE_INFO_TYPE)
@@ -55,6 +60,8 @@ export class FileView {
 
     this._addBackgroundMenu(this.gridView)
     this._addBackgroundMenu(this.columnView)
+    this._installTypeahead(this.gridView)
+    this._installTypeahead(this.columnView)
 
     this._errorPage = new Adw.StatusPage({ iconName: 'dialog-error-symbolic', title: 'Unable to Load Location' })
 
@@ -175,6 +182,67 @@ export class FileView {
       this.onContextMenu(view, x, y, null)
     })
     view.addController(gesture)
+  }
+
+  /* ---- Typeahead (type-to-select) ----
+   * Typing plain characters while the view is focused selects the first item
+   * whose name matches; the buffer resets after a short idle. */
+  _installTypeahead(view: any): void {
+    const controller = new Gtk.EventControllerKey()
+    controller.on('key-pressed', (...a: any[]) => this._onTypeaheadKey(view, a[0], a[2]))
+    view.addController(controller)
+  }
+
+  _onTypeaheadKey(view: any, keyval: number, state: number): boolean {
+    if (state & (Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK)) return false
+    if (keyval === Gdk.KEY_Escape) { this._clearTypeahead(); return false }
+
+    if (keyval === Gdk.KEY_BackSpace) {
+      if (!this._typeahead) return false
+      this._typeahead = this._typeahead.slice(0, -1)
+      this._armTypeaheadTimer()
+      if (this._typeahead) this._typeaheadFind(view)
+      return true
+    }
+
+    const ch = Gdk.keyvalToUnicode(keyval)
+    if (!ch || ch < 0x20) return false           /* not a printable character */
+    const s = String.fromCodePoint(ch)
+    if (!this._typeahead && s === ' ') return false   /* leading space is a no-op */
+    this._typeahead += s
+    this._armTypeaheadTimer()
+    this._typeaheadFind(view)
+    return true
+  }
+
+  _typeaheadFind(view: any): void {
+    const needle = this._typeahead.toLowerCase()
+    const n = this.store.getNItems()
+    const scan = (test: (name: string) => boolean): number => {
+      for (let i = 0; i < n; i++)
+        if (test(displayName(this.store.getItem(i)).toLowerCase())) return i
+      return -1
+    }
+    /* Prefer a prefix match, fall back to substring. */
+    let match = scan(name => name.startsWith(needle))
+    if (match < 0) match = scan(name => name.includes(needle))
+    if (match < 0) return
+    this.selection.selectItem(match, true)
+    view.scrollTo(match, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT, null)
+  }
+
+  _armTypeaheadTimer(): void {
+    if (this._typeaheadTimer) GLib.sourceRemove(this._typeaheadTimer)
+    this._typeaheadTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 1000, () => {
+      this._typeaheadTimer = 0
+      this._typeahead = ''
+      return false
+    })
+  }
+
+  _clearTypeahead(): void {
+    if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
+    this._typeahead = ''
   }
 }
 
