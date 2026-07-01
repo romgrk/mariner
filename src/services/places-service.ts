@@ -1,8 +1,9 @@
 import GLib from 'gi:GLib-2.0'
+import { writeFileSync, mkdirSync } from 'node:fs'
 import { F, fileForPath, fileForUri } from '../core/gio.ts'
 import { HOME } from '../core/format.ts'
 import { volumeMonitor } from './volume-monitor.ts'
-import type { Place } from '../core/types.ts'
+import type { Place, GFile } from '../core/types.ts'
 
 /* Virtual location backing the Computer interface (the drives/partitions page).
  * The pane renders a ComputerView for this URI instead of a directory listing. */
@@ -35,22 +36,41 @@ export function getComputer(): Place {
   return { label: 'Computer', icon: 'computer-symbolic', file: fileForUri(COMPUTER_URI) }
 }
 
-export function getBookmarks(): Place[] {
-  const path = GLib.buildFilenamev([HOME, '.config', 'gtk-3.0', 'bookmarks'])
-  if (!GLib.fileTest(path, GLib.FileTest.EXISTS)) return []
-  let text = ''
-  try {
-    const res = GLib.fileGetContents(path)
-    const data = Array.isArray(res) ? res[1] : res
-    text = typeof data === 'string' ? data : new TextDecoder().decode(Uint8Array.from(data))
-  } catch { return [] }
+/* GTK stores user bookmarks as one "URI [ custom label]" line per bookmark;
+ * nautilus, the GTK file chooser and this app all read/write the same file. */
+const BOOKMARKS_DIR = GLib.buildFilenamev([HOME, '.config', 'gtk-3.0'])
+const BOOKMARKS_FILE = GLib.buildFilenamev([BOOKMARKS_DIR, 'bookmarks'])
 
+/* Non-empty lines of the bookmarks file (a URI, optionally + ' Custom Label'). */
+function readBookmarkLines(): string[] {
+  if (!GLib.fileTest(BOOKMARKS_FILE, GLib.FileTest.EXISTS)) return []
+  try {
+    const res = GLib.fileGetContents(BOOKMARKS_FILE)
+    const data = Array.isArray(res) ? res[1] : res
+    const text = typeof data === 'string' ? data : new TextDecoder().decode(Uint8Array.from(data))
+    return text.split('\n').filter(l => l.trim())
+  } catch { return [] }
+}
+
+function writeBookmarkLines(lines: string[]): boolean {
+  try {
+    mkdirSync(BOOKMARKS_DIR, { recursive: true })
+    writeFileSync(BOOKMARKS_FILE, lines.length ? lines.join('\n') + '\n' : '')
+    return true
+  } catch { return false }
+}
+
+/* The URI part of a bookmark line, before any custom label. */
+function bookmarkUri(line: string): string {
+  const sp = line.indexOf(' ')
+  return sp < 0 ? line : line.slice(0, sp)
+}
+
+export function getBookmarks(): Place[] {
   const out: Place[] = []
-  for (const line of text.split('\n')) {
-    if (!line.trim()) continue
-    const sp = line.indexOf(' ')
-    const uri = sp < 0 ? line : line.slice(0, sp)
-    const label = sp < 0 ? '' : line.slice(sp + 1)
+  for (const line of readBookmarkLines()) {
+    const uri = bookmarkUri(line)
+    const label = line.slice(uri.length).trim()
     const file = fileForUri(uri)
     /* Only stat local bookmarks. getPath() is null for gvfs/remote URIs
      * (sftp://, smb://, …); querying those would block on the gvfs daemon, and
@@ -60,6 +80,30 @@ export function getBookmarks(): Place[] {
     out.push({ label: label || F.getBasename(file), icon: 'folder-symbolic', file })
   }
   return out
+}
+
+export function isBookmarked(file: GFile): boolean {
+  const uri = F.getUri(file)
+  return readBookmarkLines().some(line => bookmarkUri(line) === uri)
+}
+
+/* Append `file` to the bookmarks (no custom label — the sidebar falls back to
+ * the folder's basename). Returns false if already bookmarked or the write failed. */
+export function addBookmark(file: GFile): boolean {
+  const uri = F.getUri(file)
+  const lines = readBookmarkLines()
+  if (lines.some(line => bookmarkUri(line) === uri)) return false
+  lines.push(uri)
+  return writeBookmarkLines(lines)
+}
+
+/* Drop every bookmark pointing at `file`. Returns false if none matched. */
+export function removeBookmark(file: GFile): boolean {
+  const uri = F.getUri(file)
+  const lines = readBookmarkLines()
+  const kept = lines.filter(line => bookmarkUri(line) !== uri)
+  if (kept.length === lines.length) return false
+  return writeBookmarkLines(kept)
 }
 
 export function getDevices(): Place[] {

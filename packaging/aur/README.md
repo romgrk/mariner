@@ -76,18 +76,18 @@ Everything else (depends, makedepends, build, package) is identical.
 
 - **Source build, not a prebuilt.** `node-gtk`'s `install` script is
   `node-pre-gyp install --fallback-to-build`, which *prefers* a prebuilt binary
-  from its S3 host. Those prebuilts only exist for a handful of Node ABIs (at the
-  time of writing: Node 20/22/24) and never for Arch's rolling `nodejs`, so the
-  fallback would compile anyway. The PKGBUILD forces this with
-  `npm_config_build_from_source=true` — no opaque binary is downloaded; the addon
-  is compiled against the system libraries.
+  from its S3 host. As of node-gtk 4.0.0 those prebuilts do include Node 26
+  (matching Arch's current `nodejs`), but the PKGBUILD still forces a source
+  build with `npm_config_build_from_source=true` so the addon is compiled against
+  the exact system GTK/glib rather than an opaque downloaded binary.
 - **Native ABI.** The compiled `.node` is tied to the exact Node ABI it was built
   against, and the launcher pins `/usr/bin/node` at runtime. Build in a clean
   chroot (e.g. `makechrootpkg`) or with the system `nodejs` on `PATH` so the two
   match — not, say, an `nvm` Node. After a major Arch Node upgrade, rebuild the
   package. (`nodejs>=22.18` is required for unflagged TypeScript stripping.)
-- **License.** The project is MIT-licensed (`LICENSE` at the repo root); the
-  PKGBUILD declares `license=('MIT')` to match.
+- **License.** The project is GPL-3.0-or-later (`LICENSE` at the repo root); the
+  PKGBUILD declares `license=('GPL-3.0-or-later')`. GPLv3 is a standard SPDX
+  license, so — like GNOME Files — the package does not bundle its own copy.
 - **Network during `build()`.** `npm install` fetches `node-gtk` from the
   registry — standard for Node-based AUR packages, but it means the build is not
   fully offline/reproducible.

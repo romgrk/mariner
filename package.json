@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "description": "Mariner — a GNOME Files clone built with node-gtk + TypeScript",
+  "license": "GPL-3.0-or-later",
   "main": "src/main.ts",
   "bin": {
     "mariner": "bin/mariner.js"
@@ -17,7 +18,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "node-gtk": "^3.0.0"
+    "node-gtk": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
