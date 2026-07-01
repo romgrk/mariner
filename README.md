@@ -20,8 +20,8 @@ You already know how to use Mariner: the sidebar, breadcrumbs, tabs, grid/list
 views, right-click menus, and keyboard shortcuts all match GNOME Files. Nothing
 to relearn.
 
-The difference is everything Nautilus users have asked for and never got — split
-view, a Space-bar preview, a command palette, real full-text search — shipped in
+The difference is everything Nautilus users have asked for and never got — typeahead,
+split view, a Space-bar preview, a command palette, real full-text search — shipped in
 one app that still looks like stock GNOME.
 
 ---
