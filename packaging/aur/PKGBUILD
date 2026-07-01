@@ -1,0 +1,74 @@
+# Maintainer: Rom Grk <rom7011@gmail.com>
+pkgname=mariner-git
+_pkgname=mariner
+pkgver=0.0.1.r0.g0000000
+pkgrel=1
+pkgdesc="A GNOME Files clone built with node-gtk and TypeScript (GTK4 + libadwaita)"
+arch=('x86_64')
+url="https://github.com/romgrk/mariner"
+license=('MIT')
+# Runtime: nodejs>=22.18 for unflagged TypeScript stripping; gtk4/libadwaita
+# supply the typelibs; gobject-introspection-runtime supplies libgirepository,
+# which the node-gtk native addon links against (not pulled in by gtk4).
+depends=('nodejs>=22.18' 'gtk4' 'libadwaita' 'gobject-introspection-runtime')
+# Build: compiles the node-gtk native addon from source against system GTK.
+makedepends=('git' 'npm' 'node-gyp' 'python' 'pkgconf' 'gobject-introspection' 'cairo' 'glib2')
+optdepends=('ripgrep: full-text search inside file contents'
+            'unzip: extract .zip and .jar archives'
+            'zip: create .zip archives'
+            'gnome-console: "Open Terminal Here" (or any of ptyxis, konsole, foot, alacritty, xterm)')
+provides=('mariner')
+conflicts=('mariner')
+install="$_pkgname.install"
+source=("$_pkgname::git+https://github.com/romgrk/mariner.git")
+sha256sums=('SKIP')
+
+pkgver() {
+  cd "$srcdir/$_pkgname"
+  local ver
+  ver="$(sed -n 's/[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' package.json | head -n1)"
+  printf '%s.r%s.g%s' "${ver:-0.0.0}" "$(git rev-list --count HEAD)" "$(git rev-parse --short HEAD)"
+}
+
+build() {
+  cd "$srcdir/$_pkgname"
+  # Install node-gtk@^3.0.0 from the npm registry (npm ignores the dev-only
+  # pnpm-workspace.yaml link to ../node-gtk) and compile its native addon
+  # against the system GTK rather than downloading a prebuilt binary — the
+  # prebuilts do not track Arch's rolling Node ABI.
+  export npm_config_build_from_source=true
+  export npm_config_cache="$srcdir/.npm-cache"
+  npm install --omit=dev --no-fund --no-audit
+}
+
+package() {
+  cd "$srcdir/$_pkgname"
+  local appdir="$pkgdir/usr/lib/$_pkgname"
+
+  # The app runs its TypeScript sources directly (Node type-stripping), so the
+  # whole src/ tree ships as-is alongside the built node_modules. style.css and
+  # the search worker are resolved relative to these sources at runtime.
+  install -d "$appdir"
+  cp -r src "$appdir/"
+  cp -r node_modules "$appdir/"
+  install -Dm644 package.json "$appdir/package.json"
+
+  # Launcher. --import needs an absolute path to the register hook because Node
+  # resolves --import specifiers relative to the CWD, not the entry script.
+  install -d "$pkgdir/usr/bin"
+  cat > "$pkgdir/usr/bin/$_pkgname" <<EOF
+#!/bin/sh
+exec node \\
+  --import /usr/lib/$_pkgname/node_modules/node-gtk/lib/esm/register.mjs \\
+  /usr/lib/$_pkgname/src/main.ts "\$@"
+EOF
+  chmod 755 "$pkgdir/usr/bin/$_pkgname"
+
+  # Desktop integration: launcher entry, scalable icon, AppStream metadata.
+  install -Dm644 data/com.github.nodegtk.mariner.desktop \
+    "$pkgdir/usr/share/applications/com.github.nodegtk.mariner.desktop"
+  install -Dm644 data/icons/hicolor/scalable/apps/com.github.nodegtk.mariner.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.github.nodegtk.mariner.svg"
+  install -Dm644 data/com.github.nodegtk.mariner.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/com.github.nodegtk.mariner.metainfo.xml"
+}

@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>com.github.nodegtk.mariner</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Mariner</name>
+  <summary>Browse and manage your files</summary>
+
+  <description>
+    <p>
+      Mariner is a GNOME Files clone built with node-gtk and TypeScript on
+      GTK4 and libadwaita. It drives the same Adwaita widgets as Nautilus, so
+      the interface feels native to the GNOME desktop.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Grid and list views with adjustable zoom</li>
+      <li>Tabbed browsing with per-tab history and a breadcrumb path bar</li>
+      <li>A places sidebar with bookmarks and mounted volumes</li>
+      <li>Copy, move, rename, trash and delete with live progress</li>
+      <li>Recursive, out-of-process search that streams results as they arrive</li>
+      <li>Archive extraction and compression, batch rename, and image thumbnails</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">com.github.nodegtk.mariner.desktop</launchable>
+
+  <categories>
+    <category>Utility</category>
+    <category>System</category>
+    <category>FileManager</category>
+  </categories>
+
+  <provides>
+    <binary>mariner</binary>
+  </provides>
+
+  <url type="homepage">https://github.com/romgrk/mariner</url>
+  <url type="bugtracker">https://github.com/romgrk/mariner/issues</url>
+
+  <developer id="com.github.romgrk">
+    <name>Rom Grk</name>
+  </developer>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="0.0.1" date="2026-07-01">
+      <description>
+        <p>Initial packaged release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

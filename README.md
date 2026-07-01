@@ -5,7 +5,25 @@ with [node-gtk](https://github.com/romgrk/node-gtk) in **TypeScript**, GTK4 +
 libadwaita. It drives the same Adw/Gtk widgets nautilus does, so the UI matches
 closely.
 
-## Run
+## Install
+
+### Arch Linux (AUR)
+
+```sh
+# with an AUR helper
+paru -S mariner-git      # or: yay -S mariner-git
+
+# or by hand
+git clone https://aur.archlinux.org/mariner-git.git && cd mariner-git
+makepkg -si
+```
+
+This installs the `mariner` launcher, a desktop entry, and an icon, so Mariner
+shows up in the app menu and can be set as the default file manager
+(`xdg-mime default com.github.nodegtk.mariner.desktop inode/directory`). The
+PKGBUILD and packaging notes live in [`packaging/aur/`](packaging/aur/).
+
+## Run (from source)
 
 ```sh
 npm install      # links node-gtk; installs typescript + @types/node for checking
