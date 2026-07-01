@@ -5,6 +5,13 @@
   "type": "module",
   "description": "Mariner — a GNOME Files clone built with node-gtk + TypeScript",
   "main": "src/main.ts",
+  "bin": {
+    "mariner": "bin/mariner.js"
+  },
+  "files": [
+    "bin",
+    "src"
+  ],
   "scripts": {
     "start": "node --import node-gtk/register src/main.ts",
     "typecheck": "tsc --noEmit"

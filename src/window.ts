@@ -117,7 +117,13 @@ export class AppWindow {
     const st = loadWindowState()
     this.window.setDefaultSize(st.width, st.height)
     if (st.maximized) this.window.maximize()
-    this.window.on('close-request', () => { this._saveState(); return false })
+    this.window.on('close-request', () => {
+      this._saveState()
+      /* When the last window closes, exit the process: node-gtk keeps it alive
+       * even after the GTK loop winds down, so an explicit exit is needed. */
+      if (this.app.getWindows().length <= 1) process.exit(0)
+      return false
+    })
     this.window.addCssClass('view')
 
     this.toastOverlay = new Adw.ToastOverlay()
