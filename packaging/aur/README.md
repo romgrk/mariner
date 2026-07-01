@@ -11,13 +11,13 @@ GitHub `HEAD`.
 | `/usr/lib/mariner/src/` | the app's TypeScript sources (run directly via Node type-stripping) |
 | `/usr/lib/mariner/node_modules/` | `node-gtk` with its native addon, compiled against system GTK |
 | `/usr/bin/mariner` | launcher — `node --import .../node-gtk/lib/esm/register.mjs .../src/main.ts "$@"` |
-| `/usr/share/applications/com.github.nodegtk.mariner.desktop` | menu entry (handles `inode/directory`, so Mariner can be the default file manager) |
-| `/usr/share/icons/hicolor/scalable/apps/com.github.nodegtk.mariner.svg` | app icon (matched to the app-id, so the window/taskbar pick it up automatically) |
-| `/usr/share/metainfo/com.github.nodegtk.mariner.metainfo.xml` | AppStream metadata for software centers |
+| `/usr/share/applications/com.github.romgrk.mariner.desktop` | menu entry (handles `inode/directory`, so Mariner can be the default file manager) |
+| `/usr/share/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg` | app icon (matched to the app-id, so the window/taskbar pick it up automatically) |
+| `/usr/share/metainfo/com.github.romgrk.mariner.metainfo.xml` | AppStream metadata for software centers |
 
 The launcher passes a folder path or `file://` URI straight through, so
 `mariner ~/Documents` and "Open With → Mariner" both open that folder. Set it as
-the default with `xdg-mime default com.github.nodegtk.mariner.desktop inode/directory`.
+the default with `xdg-mime default com.github.romgrk.mariner.desktop inode/directory`.
 
 ## Test the build locally (no GitHub push required)
 

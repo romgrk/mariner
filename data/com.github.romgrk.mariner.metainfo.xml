@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.nodegtk.mariner</id>
+  <id>com.github.romgrk.mariner</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
 
@@ -24,7 +24,7 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">com.github.nodegtk.mariner.desktop</launchable>
+  <launchable type="desktop-id">com.github.romgrk.mariner.desktop</launchable>
 
   <categories>
     <category>Utility</category>
