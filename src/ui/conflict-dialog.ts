@@ -27,10 +27,10 @@ export async function resolveConflicts(parent: any, conflicts: Conflict[], destD
 
 function askOne(parent: any, c: Conflict, destDir: GFile, total: number): Promise<{ action: ConflictAction; all: boolean } | null> {
   return new Promise(resolve => {
-    const dialog = new Adw.AlertDialog(
-      `“${c.name}” already exists`,
-      `A file with that name is already in “${locationName(destDir)}”.`,
-    )
+    const dialog = new Adw.AlertDialog({
+      heading: `“${c.name}” already exists`,
+      body: `A file with that name is already in “${locationName(destDir)}”.`,
+    })
     let all: any = null
     if (total > 1) {
       all = new Gtk.CheckButton({ label: `Apply to all ${total} conflicts`, marginTop: 4 })

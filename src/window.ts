@@ -113,7 +113,7 @@ export class AppWindow {
 
   /* ---- UI ---- */
   _buildUI(): void {
-    this.window = new Adw.ApplicationWindow(this.app)
+    this.window = new Adw.ApplicationWindow({ application: this.app })
     this.window.setTitle('Mariner')
     const st = loadWindowState()
     this.window.setDefaultSize(st.width, st.height)
