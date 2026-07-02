@@ -198,6 +198,16 @@ export class FileOperations extends EventEmitter {
     }, `Restored ${n} item${n > 1 ? 's' : ''}`)
   }
 
+  /* Restore selected Trash items into an explicit destination folder (the Trash
+   * view's "Restore to…" chooser), collision-resolving each by its original
+   * display name so two same-named items don't clobber each other. */
+  restoreTo(items: Array<{ file: GFile; name: string }>, destDir: GFile): boolean {
+    const n = items.length
+    return this._quick('Restore', () => {
+      for (const { file, name } of items) file.move(uniqueChild(destDir, name), NONE, null, null)
+    }, `Restored ${n} item${n > 1 ? 's' : ''}`)
+  }
+
   /* Restore items from Trash to their original locations (undo of trash), matched
    * by trash::orig-path. */
   restoreFromTrash(origFiles: GFile[]): boolean {

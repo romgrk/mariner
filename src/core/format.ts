@@ -98,6 +98,19 @@ export function modifiedUnix(info: GFileInfo): number {
   try { return dt.toUnix() } catch { return 0 }
 }
 
+/* Original containing folder of a trashed item (from trash::orig-path), with
+ * $HOME abbreviated to `~`. Empty for non-trash entries. Drives the Trash
+ * view's "Original Location" column. */
+export function formatOrigLocation(info: GFileInfo): string {
+  const orig = info.getAttributeByteString?.('trash::orig-path')
+  if (!orig) return ''
+  const slash = orig.lastIndexOf('/')
+  const dir = slash > 0 ? orig.slice(0, slash) : '/'
+  if (dir === HOME) return '~'
+  if (dir.startsWith(HOME + '/')) return '~' + dir.slice(HOME.length)
+  return dir
+}
+
 /* Path with $HOME abbreviated to `~` (for the command palette's folder list);
  * falls back to the URI for non-local locations (trash:, recent:, mounts). */
 export function tildePath(file: GFile): string {

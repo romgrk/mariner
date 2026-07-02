@@ -110,6 +110,7 @@ export class Pane {
 
   /* ---- navigation ---- */
   get isComputer(): boolean { return !!this.location && this.location.getUri().startsWith('computer:') }
+  get isTrash(): boolean { return !!this.location && this.location.getUri().startsWith('trash:') }
 
   navigate(file: GFile, push = true): void {
     this._exitSearch()
@@ -186,7 +187,7 @@ export class Pane {
   applyPrefs(): void {
     this.view.setMode(this.prefs.viewMode)
     this.view.setZoom(this.prefs.iconSize)
-    this.view.setColumns(this.prefs.columns)
+    this.view.setColumns(this.prefs.columns, this.isTrash)
     if (this.isShowingSearch) {
       this._runSearch()
     } else {
@@ -196,14 +197,16 @@ export class Pane {
   }
 
   /* Just the list-view columns (called when the column chooser applies). */
-  applyColumns(): void { this.view.setColumns(this.prefs.columns) }
+  applyColumns(): void { this.view.setColumns(this.prefs.columns, this.isTrash) }
 
   /* Re-apply view mode + zoom + columns (called after navigation / when made
-   * active) so a tab that wasn't focused when a pref changed catches up. */
+   * active) so a tab that wasn't focused when a pref changed catches up. This
+   * runs on every navigation, so entering/leaving the Trash toggles the
+   * Original Location column here. */
   syncView(): void {
     this.view.setMode(this.prefs.viewMode)
     this.view.setZoom(this.prefs.iconSize)
-    this.view.setColumns(this.prefs.columns)
+    this.view.setColumns(this.prefs.columns, this.isTrash)
   }
 
   destroy(): void { this.dir.cancel(); this.search.cancel() }

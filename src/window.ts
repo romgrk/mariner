@@ -15,7 +15,7 @@ import { FileOperations, uniqueChild } from './services/file-operations.ts'
 import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
-import { promptText, confirm, showProperties, aboutDialog } from './ui/dialogs.ts'
+import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { createToolbar } from './ui/toolbar.ts'
@@ -320,6 +320,7 @@ export class AppWindow {
     add('properties', () => this._properties())
     add('empty-trash', () => this._emptyTrash())
     add('restore', () => this._restore())
+    add('restore-to', () => this._restoreTo())
     add('extract-here', () => this._extractHere())
     add('compress', () => this._compress())
     add('disk-usage', () => this._diskUsage())
@@ -419,6 +420,7 @@ export class AppWindow {
     /* Context actions (primary) — same branching as buildContextMenu. */
     if (target && inTrash) {
       act('Restore From Trash', 'restore', { icon: 'edit-undo-symbolic', primary: true })
+      act('Restore to…', 'restore-to', { icon: 'folder-symbolic', primary: true })
       act('Delete Permanently', 'delete', { icon: 'edit-delete-symbolic', primary: true })
       act('Properties', 'properties', { icon: 'document-properties-symbolic', primary: true })
     } else if (target) {
@@ -978,6 +980,19 @@ export class AppWindow {
       .map(s => [s.file, s.info.getAttributeByteString('trash::orig-path')] as [GFile, string])
       .filter(p => !!p[1])
     if (pairs.length) this.fileOps.restore(pairs)
+  }
+
+  /* Restore the selected Trash items into a folder the user picks, rather than
+   * their recorded original location (which may no longer exist, or where the
+   * user simply doesn't want them). */
+  async _restoreTo(): Promise<void> {
+    const sel = this._selected()
+    if (!sel.length) return
+    const dir = await chooseFolder(this.window, { title: 'Restore to Folder' })
+    if (!dir) return
+    const items = sel.map(s => ({ file: s.file, name: displayName(s.info) }))
+    if (this.fileOps.restoreTo(items, dir))
+      this.toast(`Restored ${items.length} item${items.length > 1 ? 's' : ''} to “${locationName(dir)}”`)
   }
 
   async _emptyTrash(): Promise<void> {

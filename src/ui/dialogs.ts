@@ -45,6 +45,20 @@ export function promptText(parent: any, { heading, body, value = '', okLabel = '
   })
 }
 
+/* Native folder picker (GTK's FileDialog). Resolves to the chosen folder, or
+ * null if the user cancels. Used by the Trash view's "Restore to…" action. */
+export function chooseFolder(parent: any, opts: { title?: string; initialFolder?: GFile } = {}): Promise<GFile | null> {
+  return new Promise<GFile | null>(resolve => {
+    const dialog = new Gtk.FileDialog({ title: opts.title ?? 'Select Folder', modal: true })
+    if (opts.initialFolder) dialog.setInitialFolder(opts.initialFolder)
+    dialog.selectFolder(parent, null, (_src: any, res: any) => {
+      let folder: GFile | null = null
+      try { folder = dialog.selectFolderFinish(res) } catch { /* cancelled */ }
+      resolve(folder)
+    })
+  })
+}
+
 interface ConfirmOptions {
   heading: string
   body?: string

@@ -1,6 +1,7 @@
 import {
   formatSize, formatType, formatModified, formatAccessed,
   formatCreated, formatOwner, formatGroup, formatPermissions,
+  formatOrigLocation,
 } from './format.ts'
 import type { ColumnConfig, GFileInfo } from './types.ts'
 
@@ -28,6 +29,13 @@ export const COLUMN_DEFS: ColumnDef[] = [
 
 export const COLUMN_DEF: Record<string, ColumnDef> =
   Object.fromEntries(COLUMN_DEFS.map(d => [d.id, d]))
+
+/* The Trash view's extra column: where each item originally lived. Shown only
+ * inside trash:/// (appended by FileView.setColumns) and never offered in the
+ * column chooser, so it's deliberately kept out of the registry above. */
+export const TRASH_COLUMN: ColumnDef = {
+  id: 'orig-location', label: 'Original Location', format: formatOrigLocation,
+}
 
 /* Meta columns shown by default, in order (matches GNOME Files' list view). */
 const DEFAULT_VISIBLE = ['size', 'type', 'modified']
