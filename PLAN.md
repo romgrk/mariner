@@ -45,7 +45,8 @@ Implemented and verified (headless GSK renders per §5 + service-level tests):
   (framed) drives the toolbar/actions; F6 / Alt+W switches; copy/move/drag across
   panes (Ctrl+Shift+C / Ctrl+Shift+X).
 - **Sidebar** — Recent, Home, XDG dirs, Trash, bookmarks
-  (`~/.config/gtk-3.0/bookmarks`, read-only), Computer, mounted volumes
+  (`~/.config/gtk-3.0/bookmarks`; add/remove via action, context menu, palette —
+  no reorder or custom labels yet), Computer, mounted volumes
   (`Gio.VolumeMonitor`).
 - **Search** (Ctrl+F) — recursive, out-of-process (`workers/search-worker.ts`),
   breadth-first; streams matches over a GLib-serviced pipe, resolves metadata
@@ -121,6 +122,7 @@ src/
     places-service.ts      getPlaces()/getBookmarks()/getDevices() -> Place[]
     window-state.ts        persist/restore window geometry (JSON under user config dir)
     recent-folders.ts      visited-folder store w/ frecency (JSON); feeds the palette
+    view-prefs.ts          persist view mode + list columns (JSON under user config dir)
   workers/
     search-worker.ts       pure-node breadth-first walker -> JSON path per line on stdout
   ui/                    widgets only
@@ -180,8 +182,10 @@ src/
   `prefs.sortKey`.
 - `FileView` keeps the full unfiltered dataset in `this.all`, so toggling
   hidden/sort `rebuild()`s without re-listing.
-- **Prefs are in-memory / session-scoped**, except window geometry + recent
-  folders, which persist as JSON under the user config dir.
+- **Persisted as JSON under the user config dir**: window geometry
+  (`window-state.ts`), recent folders (`recent-folders.ts`), and view mode + list
+  columns (`view-prefs.ts`). The rest of `Prefs` — sort key/direction,
+  show-hidden, zoom (`iconSize`) — is still in-memory / session-scoped.
 
 ---
 
@@ -289,10 +293,11 @@ criticals per GSK snapshot are expected — present on HEAD too.)
 - **Command palette** jumps only to recently-visited folders (no arbitrary-path
   completion or file search); recent folders persist in `recent-folders.json`,
   never pruned below 200.
-- **Bookmarks** are read-only (no add/remove/reorder); permissions/owner/group
-  columns and the Properties permissions row are read-only (no chmod); no
-  network/remote locations; no starred files. XDG special dirs are hidden when
-  they resolve to `$HOME`. (See README "Not yet supported".)
+- **Bookmarks** support add/remove but not reorder or custom labels;
+  permissions/owner/group columns and the Properties permissions row are
+  read-only (no chmod); no network/remote locations; no starred files. XDG
+  special dirs are hidden when they resolve to `$HOME`. (See README "Not yet
+  supported".)
 - Large single-file copies + archive ops show a **pulsing** (indeterminate) bar,
   not a percentage.
 - `tsc` isn't vendored — `npm install` before `npm run typecheck`; the app runs
@@ -316,5 +321,10 @@ Parity with nautilus is reached; these are net-new draws, none implemented:
 - **Editable permissions** in Properties (chmod via `F.setAttribute`).
 - **Miller columns** — a third column-browser view mode with strong keyboard nav.
 - **Duplicate finder** — hash-based, surfaced as a smart view.
-- **Bookmark editing**, **network/remote locations**, **starred files** — see
-  README "Not yet supported".
+- **Persist remaining view prefs** — sort key/direction, show-hidden, and zoom
+  reset each launch (only view mode + columns persist); extend `view-prefs.ts`,
+  optionally keyed per-folder for nautilus-style per-directory view memory.
+- **Bookmark reorder / custom labels**, **network/remote locations** (GVfs
+  SFTP/SMB), **starred files** — see README "Not yet supported".
+- **Diff / compare** two selected files (leans on dual pane; shells out).
+- **PDF / markdown rendering** in Quick Look (markdown is treated as text today).
