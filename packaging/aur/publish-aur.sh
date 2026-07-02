@@ -27,6 +27,19 @@ FILES=(PKGBUILD mariner.install)
 msg()  { printf '\033[1;34m::\033[0m %s\n' "$*"; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
+# Mirror the PKGBUILD's pkgver() for a given git ref of the source repo:
+#   <package.json version>.r<commit count>.g<short hash>
+# Reads package.json from the committed tree (not the worktree) so it matches
+# exactly what the AUR clones and builds.
+compute_pkgver() {
+  local ref="$1" ver
+  ver="$(git -C "$SRC_DIR" show "$ref:package.json" \
+    | sed -n 's/[[:space:]]*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n1)"
+  printf '%s.r%s.g%s' "${ver:-0.0.0}" \
+    "$(git -C "$SRC_DIR" rev-list --count "$ref")" \
+    "$(git -C "$SRC_DIR" rev-parse --short "$ref")"
+}
+
 command -v makepkg >/dev/null || die "makepkg not found (install base-devel)."
 for f in "${FILES[@]}"; do
   [[ -f "$SRC_DIR/$f" ]] || die "missing $SRC_DIR/$f"
@@ -35,6 +48,10 @@ done
 # Warn if the packaging commits aren't on origin/master yet — the AUR build
 # clones the app from GitHub, so unpushed packaging would build stale sources.
 if git -C "$SRC_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  # Refresh origin/master so both the pushed-check below and the pkgver we bake
+  # in (step 2b) reflect what the AUR will actually clone and build.
+  git -C "$SRC_DIR" fetch --quiet origin 2>/dev/null \
+    || msg "WARNING: could not fetch origin — pushed-check and pkgver may be stale"
   if ! git -C "$SRC_DIR" diff --quiet origin/master -- "$SRC_DIR" 2>/dev/null; then
     msg "WARNING: packaging differs from origin/master — did you 'git push' first?"
   fi
@@ -55,9 +72,27 @@ fi
 msg "Copying: ${FILES[*]}"
 for f in "${FILES[@]}"; do cp "$SRC_DIR/$f" "$WORK_DIR/$f"; done
 
+# 2b. Bake the real pkgver into the published PKGBUILD.
+#     `makepkg --printsrcinfo` copies pkgver verbatim — it never runs pkgver() —
+#     so shipping the r0.g0000000 placeholder would freeze the AUR listing at
+#     that string forever and users' AUR helpers would never see an update.
+#     Compute the version the same way the PKGBUILD's pkgver() does, but from
+#     origin/master (the exact tree the AUR clones), so every pushed commit
+#     becomes a real version bump. pkgver() stays in the PKGBUILD and recomputes
+#     the identical value at build time.
+if git -C "$SRC_DIR" rev-parse --git-dir >/dev/null 2>&1; then
+  build_ref=origin/master
+  git -C "$SRC_DIR" rev-parse --verify --quiet "$build_ref" >/dev/null || build_ref=HEAD
+  pkgver="$(compute_pkgver "$build_ref")"
+  msg "Setting pkgver = $pkgver (from $build_ref)"
+  sed -i "s|^pkgver=.*|pkgver=$pkgver|" "$WORK_DIR/PKGBUILD"
+else
+  msg "WARNING: $SRC_DIR is not a git repo — keeping placeholder pkgver"
+fi
+
 # 3. Regenerate .SRCINFO from the PKGBUILD (AUR rejects a PKGBUILD/.SRCINFO
-#    mismatch). For a -git package the pkgver here is the placeholder; it is
-#    recomputed at build time by pkgver(), which is expected and accepted.
+#    mismatch). The pkgver baked in above flows through here so the AUR listing
+#    shows the new version; pkgver() still recomputes it at build time.
 msg "Regenerating .SRCINFO"
 ( cd "$WORK_DIR" && makepkg --printsrcinfo > .SRCINFO )
 
