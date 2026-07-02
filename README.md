@@ -15,7 +15,7 @@
   <a href="#contributing">Contributing</a>
 </p>
 
-Mariner is a native GTK4 + libadwaita file manager for the GNOME desktop. It
+Mariner is a GTK4 + libadwaita file manager for the GNOME desktop. It
 drives the same widgets as [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus)
 (Nautilus), so it looks and behaves like home — then adds type-to-select find,
 dual-pane browsing, a Quick Look preview, a command palette, full-text search,
