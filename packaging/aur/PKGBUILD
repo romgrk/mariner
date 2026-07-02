@@ -91,6 +91,8 @@ EOF
     "$pkgdir/usr/share/applications/com.github.romgrk.mariner.desktop"
   install -Dm644 data/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg \
     "$pkgdir/usr/share/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/com.github.romgrk.mariner-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/com.github.romgrk.mariner-symbolic.svg"
   install -Dm644 data/com.github.romgrk.mariner.metainfo.xml \
     "$pkgdir/usr/share/metainfo/com.github.romgrk.mariner.metainfo.xml"
 }

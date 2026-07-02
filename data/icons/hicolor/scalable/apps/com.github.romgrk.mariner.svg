@@ -1,50 +1,53 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <linearGradient id="plate" x1="0" y1="12" x2="0" y2="104" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#6aa8ee"/>
-      <stop offset="1" stop-color="#2474da"/>
+    <!-- GNOME standard palette blues (Blue 2 -> Blue 4) -->
+    <linearGradient id="face" x1="64" y1="16" x2="64" y2="108" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#62a0ea"/>
+      <stop offset="1" stop-color="#2f77dd"/>
     </linearGradient>
-    <linearGradient id="edge" x1="0" y1="88" x2="0" y2="110" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#195ba8"/>
-      <stop offset="1" stop-color="#0e3f79"/>
-    </linearGradient>
-    <linearGradient id="rim" x1="0" y1="12" x2="0" y2="104" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#ffffff" stop-opacity="0.55"/>
-      <stop offset="0.45" stop-color="#ffffff" stop-opacity="0"/>
-    </linearGradient>
-    <filter id="plateShadow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="4"/>
-    </filter>
-    <filter id="needleShadow" x="-60%" y="-60%" width="220%" height="220%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="1.2" result="b"/>
-      <feOffset in="b" dy="1.4" result="o"/>
-      <feColorMatrix in="o" type="matrix" values="0 0 0 0 0.04  0 0 0 0 0.16  0 0 0 0 0.34  0 0 0 0.3 0" result="s"/>
-      <feMerge>
-        <feMergeNode in="s"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
   </defs>
 
-  <!-- soft drop shadow -->
-  <rect x="12" y="15" width="104" height="99" rx="26" fill="#0a2b52" opacity="0.32" filter="url(#plateShadow)"/>
-
-  <!-- 3D bottom thickness -->
-  <rect x="12" y="12" width="104" height="98" rx="26" fill="url(#edge)"/>
-
+  <!-- saturated dark-blue outline around the whole silhouette (GNOME edge definition) -->
+  <rect x="18.5" y="14.5" width="91" height="99" rx="15.5" fill="#174a90"/>
+  <!-- front profile (the ~4px "thickness" of the plate, darker; per GNOME "top and front") -->
+  <rect x="20" y="16" width="88" height="96" rx="14" fill="#1a5fb4"/>
   <!-- front face -->
-  <rect x="12" y="12" width="104" height="92" rx="26" fill="url(#plate)"/>
-  <!-- top bevel highlight -->
-  <rect x="12" y="12" width="104" height="92" rx="26" fill="none" stroke="url(#rim)" stroke-width="2"/>
+  <rect x="20" y="16" width="88" height="92" rx="14" fill="url(#face)"/>
 
-  <!-- compass needle -->
-  <g transform="translate(64,58) rotate(26)" filter="url(#needleShadow)">
-    <path d="M0 -38 L-13 0 L0 0 Z" fill="#ffffff"/>
-    <path d="M0 -38 L13 0 L0 0 Z" fill="#e3ecf7"/>
-    <path d="M0 38 L-13 0 L0 0 Z" fill="#b3c8e6"/>
-    <path d="M0 38 L13 0 L0 0 Z" fill="#98b4dd"/>
-    <circle r="5" fill="#ffffff"/>
-    <circle r="2.2" fill="#1c71d8"/>
+  <!-- compass rose, axis-aligned so it reads as a navigation instrument (not a browser needle) -->
+  <g transform="translate(64 62)">
+    <!-- secondary points (NE, SE, SW, NW), drawn first so the primaries sit on top -->
+    <g fill="#c3d4ef">
+      <g transform="rotate(45)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(135)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(225)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(315)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
+    </g>
+    <g fill="#ffffff">
+      <g transform="rotate(45)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(135)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(225)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
+      <g transform="rotate(315)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
+    </g>
+
+    <!-- primary points (N, E, S, W): shadow half then light half give the classic dimensional look -->
+    <g fill="#c3d4ef">
+      <g transform="rotate(0)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
+      <g transform="rotate(90)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
+      <g transform="rotate(180)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
+      <g transform="rotate(270)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
+    </g>
+    <g fill="#ffffff">
+      <g transform="rotate(0)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
+      <g transform="rotate(90)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
+      <g transform="rotate(180)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
+      <g transform="rotate(270)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
+    </g>
+
+    <!-- hub -->
+    <circle r="6.5" fill="#ffffff"/>
+    <circle r="3.2" fill="#1c71d8"/>
+    <circle r="1.1" fill="#ffffff"/>
   </g>
 </svg>

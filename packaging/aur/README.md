@@ -13,6 +13,7 @@ GitHub `HEAD`.
 | `/usr/bin/mariner` | launcher — `node --import .../node-gtk/lib/esm/register.mjs .../src/main.ts "$@"` |
 | `/usr/share/applications/com.github.romgrk.mariner.desktop` | menu entry (handles `inode/directory`, so Mariner can be the default file manager) |
 | `/usr/share/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg` | app icon (matched to the app-id, so the window/taskbar pick it up automatically) |
+| `/usr/share/icons/hicolor/symbolic/apps/com.github.romgrk.mariner-symbolic.svg` | monochrome symbolic variant (shell, notifications, dark theme) |
 | `/usr/share/metainfo/com.github.romgrk.mariner.metainfo.xml` | AppStream metadata for software centers |
 
 The launcher passes a folder path or `file://` URI straight through, so
