@@ -14,6 +14,7 @@ import { ClipboardService } from './services/clipboard-service.ts'
 import { FileOperations, uniqueChild } from './services/file-operations.ts'
 import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
+import { archiveRootFile } from './core/archive-uri.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
 import { promptText, confirm, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
@@ -630,6 +631,9 @@ export class AppWindow {
   /* ---- Activation + context menu ---- */
   onItemActivated(tab: Tab, info: GFileInfo, file: GFile): void {
     if (isDirectory(info)) { tab.navigate(file); return }
+    /* Browse archives in place as a virtual folder (gvfs archive://), reusing
+     * the normal view — no extraction. "Open With…" still launches a manager. */
+    if (isArchive(displayName(info))) { tab.navigate(archiveRootFile(file)); return }
     try { Gio.AppInfo.launchDefaultForUri(file.getUri(), null) }
     catch { this.toast(`Could not open “${displayName(info)}”`) }
   }
