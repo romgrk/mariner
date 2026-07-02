@@ -8,6 +8,7 @@ import { COMPUTER_URI } from './services/places-service.ts'
 import { History } from './core/navigation.ts'
 import { recordFolderVisit } from './services/recent-folders.ts'
 import { fileForUri } from './core/gio.ts'
+import { archiveFileOf, isArchiveLocation } from './core/archive-uri.ts'
 import type { Entry, GFile, GFileInfo, Prefs, ViewConfig, SearchFilter } from './core/types.ts'
 
 /* A single browsing pane: binds a DirectoryService + SearchService to one
@@ -77,6 +78,10 @@ export class Pane {
     /* The Computer view sits above the filesystem root, so Up from "/" lands
      * there (and enables the Up button at "/"). */
     if (this.location && this.location.getPath() === '/') return fileForUri(COMPUTER_URI)
+    /* Up from an archive's root leaves the archive, landing on the folder that
+     * contains the archive file. */
+    const archive = this.location && archiveFileOf(this.location)
+    if (archive) return archive.getParent()
     return null
   }
   get searchActive(): boolean { return !!this.searchQuery || this.searchFilter.category !== 'all' || this.searchFilter.since > 0 }
@@ -110,14 +115,21 @@ export class Pane {
 
   /* ---- navigation ---- */
   get isComputer(): boolean { return !!this.location && this.location.getUri().startsWith('computer:') }
+  get isTrash(): boolean { return !!this.location && this.location.getUri().startsWith('trash:') }
 
   navigate(file: GFile, push = true): void {
     this._exitSearch()
     if (push && this.location) this.history.visit(this.location)
     this.location = file
-    recordFolderVisit(file.getUri())
+    this._recordVisit(file)
     this._load(file)
     this.onChanged()
+  }
+
+  /* Archive:// mounts are transient (and their double-escaped URIs unsightly),
+   * so keep them out of the recent-folders / "jump to folder" history. */
+  _recordVisit(file: GFile): void {
+    if (!isArchiveLocation(file)) recordFolderVisit(file.getUri())
   }
 
   back(): void { this._go(this.history.goBack(this.location)) }
@@ -132,7 +144,7 @@ export class Pane {
     if (!file) return
     this._exitSearch()
     this.location = file
-    recordFolderVisit(file.getUri())
+    this._recordVisit(file)
     this._load(file)
     this.onChanged()
   }
@@ -186,7 +198,7 @@ export class Pane {
   applyPrefs(): void {
     this.view.setMode(this.prefs.viewMode)
     this.view.setZoom(this.prefs.iconSize)
-    this.view.setColumns(this.prefs.columns)
+    this.view.setColumns(this.prefs.columns, this.isTrash)
     if (this.isShowingSearch) {
       this._runSearch()
     } else {
@@ -196,14 +208,16 @@ export class Pane {
   }
 
   /* Just the list-view columns (called when the column chooser applies). */
-  applyColumns(): void { this.view.setColumns(this.prefs.columns) }
+  applyColumns(): void { this.view.setColumns(this.prefs.columns, this.isTrash) }
 
   /* Re-apply view mode + zoom + columns (called after navigation / when made
-   * active) so a tab that wasn't focused when a pref changed catches up. */
+   * active) so a tab that wasn't focused when a pref changed catches up. This
+   * runs on every navigation, so entering/leaving the Trash toggles the
+   * Original Location column here. */
   syncView(): void {
     this.view.setMode(this.prefs.viewMode)
     this.view.setZoom(this.prefs.iconSize)
-    this.view.setColumns(this.prefs.columns)
+    this.view.setColumns(this.prefs.columns, this.isTrash)
   }
 
   destroy(): void { this.dir.cancel(); this.search.cancel() }

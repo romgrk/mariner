@@ -4,6 +4,7 @@ import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
 import Pango from 'gi:Pango-1.0'
 import { HOME } from '../core/format.ts'
+import { archiveName } from '../core/archive-uri.ts'
 import { volumeMonitor } from '../services/volume-monitor.ts'
 import type { GFile } from '../core/types.ts'
 
@@ -42,7 +43,7 @@ const DEFAULT_MOD_MASK =
 
 type BtnType =
   | 'normal' | 'root' | 'admin' | 'home' | 'starred' | 'recent'
-  | 'mount' | 'trash' | 'network' | 'computer' | 'burn'
+  | 'mount' | 'trash' | 'network' | 'computer' | 'burn' | 'archive'
 
 interface Crumb {
   type: BtnType
@@ -110,6 +111,10 @@ function classify(file: GFile): Crumb {
     return { type: 'network', name: 'Network', iconName: ICON_REMOTE, gicon: null, isRoot: true }
   if (scheme === 'computer' && isSchemeRoot)
     return { type: 'computer', name: 'Computer', iconName: 'computer-symbolic', gicon: null, isRoot: true }
+  /* An archive browsed in place (archive://) — its root is the archive file;
+   * label it with the archive's name and stop the ancestor walk there. */
+  if (scheme === 'archive' && isSchemeRoot)
+    return { type: 'archive', name: archiveName(file) || file.getBasename() || 'Archive', iconName: 'package-x-generic-symbolic', gicon: null, isRoot: true }
   if (scheme === 'burn' && isSchemeRoot)
     return { type: 'burn', name: file.getBasename() || 'CD/DVD Creator', iconName: null, gicon: null, isRoot: true }
 

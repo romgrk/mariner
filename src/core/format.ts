@@ -1,5 +1,6 @@
 import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
+import { archiveName } from './archive-uri.ts'
 import type { GFile, GFileInfo } from './types.ts'
 
 export const HOME: string = GLib.getHomeDir()
@@ -98,6 +99,19 @@ export function modifiedUnix(info: GFileInfo): number {
   try { return dt.toUnix() } catch { return 0 }
 }
 
+/* Original containing folder of a trashed item (from trash::orig-path), with
+ * $HOME abbreviated to `~`. Empty for non-trash entries. Drives the Trash
+ * view's "Original Location" column. */
+export function formatOrigLocation(info: GFileInfo): string {
+  const orig = info.getAttributeByteString?.('trash::orig-path')
+  if (!orig) return ''
+  const slash = orig.lastIndexOf('/')
+  const dir = slash > 0 ? orig.slice(0, slash) : '/'
+  if (dir === HOME) return '~'
+  if (dir.startsWith(HOME + '/')) return '~' + dir.slice(HOME.length)
+  return dir
+}
+
 /* Path with $HOME abbreviated to `~` (for the command palette's folder list);
  * falls back to the URI for non-local locations (trash:, recent:, mounts). */
 export function tildePath(file: GFile): string {
@@ -112,8 +126,16 @@ export function tildePath(file: GFile): string {
 export function locationName(file: GFile): string {
   const path = file.getPath()
   if (path === HOME) return 'Home'
-  if (path) return file.getBasename()
   const uri = file.getUri()
+  /* Archive locations (archive://) are handled before the path check: the title
+   * is set the moment we navigate — before the backend is mounted — so getPath()
+   * is null then. Sub-folders keep their real basename; the root (basename "/")
+   * shows the archive's filename. */
+  if (uri.startsWith('archive://')) {
+    const name = file.getBasename()
+    return name && name !== '/' ? name : (archiveName(file) ?? '/')
+  }
+  if (path) return file.getBasename()
   if (uri.startsWith('trash:')) return 'Trash'
   if (uri.startsWith('recent:')) return 'Recent'
   if (uri.startsWith('network:')) return 'Network'
