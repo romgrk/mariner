@@ -21,6 +21,9 @@ type ContextMenuHandler = (widget: any, x: number, y: number, target: Entry | nu
 /* Only fall back to the loading spinner if a load is slower than this; faster
  * loads (the common case) swap their results in without ever showing it. */
 const SPINNER_DELAY = 300
+/* Grace period before the floating "Searching…" bar appears, so a search that
+ * finishes near-instantly never flashes it (mirrors nautilus's loading delay). */
+const SEARCH_BAR_DELAY = 200
 
 /* Chord modifiers we discriminate on (lock/scroll bits are ignored). */
 const MODIFIER_MASK = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
@@ -65,6 +68,7 @@ export class FileView {
   onDropFiles: (files: GFile[], targetDir?: GFile) => void = () => {}
   onPreview: () => void = () => {}
   onFocusIn: () => void = () => {}
+  onSearchStop: () => void = () => {}
   isCutFile: (file: GFile) => boolean = () => false
 
   gridView: any
@@ -88,6 +92,8 @@ export class FileView {
   _restoreScroll = -1
   _pendingReset = false
   _spinnerTimer = 0
+  _searchProgress = false
+  _searchProgressTimer = 0
   _merge = false
   _seen: Set<string> | null = null
   _storeKeys: Set<string> | null = null
@@ -138,6 +144,7 @@ export class FileView {
     /* Overlay hosts the transient floating bar (typeahead indicator), pinned to
      * the bottom-right like nautilus's NautilusFloatingBar. */
     this.floatingBar = new FloatingBar()
+    this.floatingBar.onStop = () => this.onSearchStop()
     this.overlay = new Gtk.Overlay({ child: this.stack })
     this.overlay.addOverlay(this.floatingBar.widget)
 
@@ -633,9 +640,34 @@ export class FileView {
   }
 
   /* Reflect the current typeahead buffer in the floating indicator. */
-  _syncTypeaheadBar(): void {
-    if (this._typeahead) this.floatingBar.show(this._typeahead)
+  _syncTypeaheadBar(): void { this._updateBar() }
+
+  /* The floating pill is shared by the running-search status (spinner + Cancel)
+   * and the typeahead query indicator; the search status wins while it's up. */
+  _updateBar(): void {
+    if (this._searchProgress) this.floatingBar.show('Searching…', { spinner: true, stop: true })
+    else if (this._typeahead) this.floatingBar.show(this._typeahead)
     else this.floatingBar.hide()
+  }
+
+  /* Show the "Searching…" pill (spinner + Cancel) once the search outlives a
+   * short delay, so a quick search never flashes it. Called on each search
+   * (re-)start; a no-op while one is already showing or pending. */
+  showSearchProgress(): void {
+    if (this._searchProgress || this._searchProgressTimer) return
+    this._searchProgressTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, SEARCH_BAR_DELAY, () => {
+      this._searchProgressTimer = 0
+      this._searchProgress = true
+      this._updateBar()
+      return false
+    })
+  }
+
+  hideSearchProgress(): void {
+    if (this._searchProgressTimer) { GLib.sourceRemove(this._searchProgressTimer); this._searchProgressTimer = 0 }
+    if (!this._searchProgress) return
+    this._searchProgress = false
+    this._updateBar()
   }
 
   /* Rank every row by fuzzy score (the same fzy scorer the command palette uses)
@@ -667,7 +699,7 @@ export class FileView {
     this._typeaheadTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 1000, () => {
       this._typeaheadTimer = 0
       this._typeahead = ''
-      this.floatingBar.hide()
+      this._updateBar()
       return false
     })
   }
@@ -676,7 +708,7 @@ export class FileView {
     if (!this._typeahead && !this._typeaheadTimer) return
     if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
     this._typeahead = ''
-    this.floatingBar.hide()
+    this._updateBar()
   }
 
   /* ---- Vim-style cursor movement (Alt+h/j/k/l) ----
