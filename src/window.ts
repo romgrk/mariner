@@ -305,6 +305,7 @@ export class AppWindow {
     this.toolbar.searchButton.setActionName('win.search')
 
     add('select-all', () => this.activeTab?.view.selectAll())
+    add('select-pattern', () => this._selectPattern())
     add('preview', () => { if (this.activeTab) this.togglePreview(this.activeTab) })
     add('open', () => this._openSelection())
     add('open-new-tab', () => this._openNewTab())
@@ -497,6 +498,7 @@ export class AppWindow {
     act('Back', 'back', { icon: 'go-previous-symbolic' })
     act('Forward', 'forward', { icon: 'go-next-symbolic' })
     act('Select All', 'select-all', { icon: 'edit-select-all-symbolic' })
+    act('Select Items Matching…', 'select-pattern', { icon: 'edit-find-symbolic' })
     act('Invert Selection', 'invert-selection', { icon: 'edit-select-all-symbolic' })
     act('Show Hidden Files', 'show-hidden', { icon: 'view-reveal-symbolic' })
     act('Sort by Name', 'sort-name', { icon: 'view-sort-ascending-symbolic' })
@@ -743,6 +745,22 @@ export class AppWindow {
     this.sidebar.refresh()
     this.sidebar.setActive(this.activeTab?.location ?? file)
     this.toast(`Removed “${locationName(file)}” from the sidebar`)
+  }
+
+  /* Select every item in the current folder whose name matches a shell glob
+   * (nautilus's "Select Items Matching", Ctrl+S). */
+  async _selectPattern(): Promise<void> {
+    const view = this.activeTab?.view
+    if (!view) return
+    const pattern = await promptText(this.window, {
+      heading: 'Select Items Matching',
+      body: 'Use * and ? as wildcards (e.g. “*.png”).',
+      placeholder: 'Pattern', okLabel: 'Select',
+    })
+    if (!pattern) return
+    const count = view.selectPattern(pattern)
+    view.focusView()
+    this.toast(count > 0 ? `Selected ${count} item${count === 1 ? '' : 's'}` : 'No items match the pattern')
   }
 
   _openSelection(): void {

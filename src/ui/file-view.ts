@@ -4,7 +4,7 @@ import Gio from 'gi:Gio-2.0'
 import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
 import { FILE_INFO_TYPE, uriOf } from '../core/gio.ts'
-import { displayName, isDirectory } from '../core/format.ts'
+import { displayName, isDirectory, formatBytes } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
@@ -12,6 +12,7 @@ import type { CellContext } from './cells.ts'
 import { fuzzyMatch } from '../core/fuzzy-match.ts'
 import { COLUMN_DEF, defaultColumnConfig } from '../core/columns.ts'
 import { FloatingBar } from './floating-bar.ts'
+import { globMatcher } from '../core/glob.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
 import type { ColumnConfig, Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
 
@@ -78,6 +79,7 @@ export class FileView {
   stack: any
   overlay: any
   floatingBar: FloatingBar
+  _statusDirty = false
   _errorPage: any
   _loading = false
   _emptyKind: EmptyKind = 'folder'
@@ -135,8 +137,9 @@ export class FileView {
     this.stack.addNamed(new Adw.StatusPage({ iconName: 'system-search-symbolic', title: 'No Results Found', description: 'Try a different search term.' }), 'empty-search')
     this.stack.addNamed(this._errorPage, 'error')
 
-    /* Overlay hosts the transient floating bar (typeahead indicator), pinned to
-     * the bottom-right like nautilus's NautilusFloatingBar. */
+    /* Overlay hosts the floating bar, pinned bottom-right like nautilus's
+     * NautilusFloatingBar. One pill, shown at a time: the typeahead query while
+     * typing, otherwise the selection status ("12 items selected (348 MB)"). */
     this.floatingBar = new FloatingBar()
     this.overlay = new Gtk.Overlay({ child: this.stack })
     this.overlay.addOverlay(this.floatingBar.widget)
@@ -149,6 +152,12 @@ export class FileView {
     const focus = new Gtk.EventControllerFocus()
     focus.on('enter', () => this.onFocusIn())
     this.overlay.addController(focus)
+
+    /* Keep the selection status current. Both signals fire in bursts (rubber-band
+     * drag, incremental sorted-insert during a load), so the refresh is coalesced
+     * onto the idle loop — one pass per frame, not per event. */
+    this.selection.on('selection-changed', () => this._scheduleStatus())
+    this.store.on('items-changed', () => this._scheduleStatus())
   }
 
   get widget(): any { return this.overlay }
@@ -434,6 +443,33 @@ export class FileView {
 
   selectAll(): void { this.selection.selectAll() }
 
+  /* Replace the selection with every row whose name matches the shell glob
+   * `pattern` (*, ? wildcards), like nautilus's "Select Items Matching" (Ctrl+S).
+   * Returns the match count; scrolls the first match into view. (Per-row toggling
+   * rather than SelectionModel.set_selection, which node-gtk mis-marshals for a
+   * pair of Bitset args — it applied only the first bit.) */
+  selectPattern(pattern: string): number {
+    const match = globMatcher(pattern)
+    const n = this.store.getNItems()
+    this.selection.unselectAll()
+    let first = -1, count = 0
+    for (let i = 0; i < n; i++) {
+      if (!match(displayName(this.store.getItem(i)))) continue
+      this.selection.selectItem(i, false)   // add to selection, keep earlier matches
+      if (first < 0) first = i
+      count++
+    }
+    /* Scroll the first match into view with FOCUS only — the SELECT flag would
+     * re-select that row *exclusively*, collapsing the multi-selection we just
+     * built back down to one item. */
+    if (first >= 0) this._scrollItemIntoView(first, Gtk.ListScrollFlags.FOCUS)
+    return count
+  }
+
+  /* Move keyboard focus into the visible view (e.g. to restore it after a dialog
+   * that stole focus closes). */
+  focusView(): void { this._focusVisibleView() }
+
   invertSelection(): void {
     const n = this.store.getNItems()
     for (let i = 0; i < n; i++) {
@@ -482,6 +518,53 @@ export class FileView {
   refreshCells(): void {
     this.gridView.setFactory(gridFactory(this._cellContext()))
     this.nameCol.setFactory(nameCellFactory(this._cellContext()))
+  }
+
+  /* ---- Floating status bar (selection summary) ----
+   * The one floating pill shows the typeahead query while you're typing and, the
+   * rest of the time, the selection summary — like nautilus, which surfaces the
+   * bar only when something is selected (no idle "N items" clutter). */
+
+  /* Coalesce a refresh onto the idle loop: a single dirty flag collapses the
+   * burst of signals from a load / rubber-band drag into one pass. */
+  _scheduleStatus(): void {
+    if (this._statusDirty) return
+    this._statusDirty = true
+    GLib.idleAdd(GLib.PRIORITY_DEFAULT_IDLE, () => {
+      this._statusDirty = false
+      this._refreshBar()
+      return false
+    })
+  }
+
+  /* Resolve what the floating pill shows: an active typeahead query wins;
+   * otherwise the selection summary, or nothing when the selection is empty. */
+  _refreshBar(): void {
+    if (this._typeahead) { this.floatingBar.show(this._typeahead); return }
+    const text = this._selectionStatus()
+    if (text) this.floatingBar.show(text)
+    else this.floatingBar.hide()
+  }
+
+  /* nautilus-style summary of the current selection, or null if nothing is
+   * selected. Files contribute their size (getSize is a BigInt under node-gtk);
+   * folders don't, since their inode size isn't the recursive total. */
+  _selectionStatus(): string | null {
+    const n = this.store.getNItems()
+    let files = 0, folders = 0, bytes = 0, firstName = ''
+    for (let i = 0; i < n; i++) {
+      if (!this.selection.isSelected(i)) continue
+      const info = this.store.getItem(i)
+      if (!firstName) firstName = displayName(info)
+      if (isDirectory(info)) folders++
+      else { files++; bytes += Number(info.getSize()) }
+    }
+    if (files + folders === 0) return null
+    const size = formatBytes(bytes)
+    if (files + folders === 1) return folders === 1 ? `“${firstName}” selected` : `“${firstName}” selected (${size})`
+    if (files === 0) return `${folders} folders selected`
+    if (folders === 0) return `${files} items selected (${size})`
+    return `${folders} ${folders === 1 ? 'folder' : 'folders'} selected, ${files} other ${files === 1 ? 'item' : 'items'} selected (${size})`
   }
 
   /* ---- internals ---- */
@@ -628,11 +711,9 @@ export class FileView {
     return true
   }
 
-  /* Reflect the current typeahead buffer in the floating indicator. */
-  _syncTypeaheadBar(): void {
-    if (this._typeahead) this.floatingBar.show(this._typeahead)
-    else this.floatingBar.hide()
-  }
+  /* Reflect the current typeahead buffer in the floating indicator (falling back
+   * to the selection summary once the buffer empties — see _refreshBar). */
+  _syncTypeaheadBar(): void { this._refreshBar() }
 
   /* Rank every row by fuzzy score (the same fzy scorer the command palette uses)
    * and select the best match. fzy strongly rewards prefix / consecutive runs,
@@ -663,7 +744,7 @@ export class FileView {
     this._typeaheadTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 1000, () => {
       this._typeaheadTimer = 0
       this._typeahead = ''
-      this.floatingBar.hide()
+      this._refreshBar()
       return false
     })
   }
@@ -672,7 +753,7 @@ export class FileView {
     if (!this._typeahead && !this._typeaheadTimer) return
     if (this._typeaheadTimer) { GLib.sourceRemove(this._typeaheadTimer); this._typeaheadTimer = 0 }
     this._typeahead = ''
-    this.floatingBar.hide()
+    this._refreshBar()
   }
 
   /* ---- Vim-style cursor movement (Alt+h/j/k/l) ----
@@ -690,7 +771,9 @@ export class FileView {
     const forward = dir === 'down' || dir === 'right'
     const sel = this.selection.getSelection()
     let target: number
-    if (sel.getSize() === 0) {
+    /* Bitset.get_size is a guint64 → BigInt under node-gtk; coerce, or `=== 0` is
+     * never true and an empty selection wrongly falls through to the edge math. */
+    if (Number(sel.getSize()) === 0) {
       target = forward ? 0 : n - 1
     } else {
       const cols = isList ? 1 : this._gridColumns()

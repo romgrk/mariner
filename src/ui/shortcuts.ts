@@ -29,6 +29,7 @@ const SECTIONS: Section[] = [
   ] },
   { title: 'Select', items: [
     ['Select All', '<Primary>a'],
+    ['Select Items Matching', '<Primary>s'],
     ['Invert Selection', '<Primary><Shift>i'],
   ] },
   { title: 'View', items: [
