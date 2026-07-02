@@ -29,7 +29,7 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, boo
     : ['Remove From Bookmarks', 'win.remove-bookmark']
 
   if (target && inTrash) {
-    section(['Restore From Trash', 'win.restore'])
+    section(['Restore From Trash', 'win.restore'], ['Restore to…', 'win.restore-to'])
     section(['Delete Permanently', 'win.delete'])
     section(['Properties', 'win.properties'])
   } else if (target) {

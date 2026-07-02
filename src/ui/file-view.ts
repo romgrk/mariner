@@ -10,7 +10,7 @@ import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
 import type { CellContext } from './cells.ts'
 import { fuzzyMatch } from '../core/fuzzy-match.ts'
-import { COLUMN_DEF, defaultColumnConfig } from '../core/columns.ts'
+import { COLUMN_DEF, TRASH_COLUMN, defaultColumnConfig } from '../core/columns.ts'
 import { FloatingBar } from './floating-bar.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
 import type { ColumnConfig, Entry, GFile, GFileInfo, ViewConfig, ViewMode, EmptyKind } from '../core/types.ts'
@@ -412,16 +412,20 @@ export class FileView {
   setMode(mode: ViewMode): void { this.viewStack.setVisibleChildName(mode === 'list' ? 'list' : 'grid') }
 
   /* Rebuild the list view's meta columns (everything after the fixed Name
-   * column) from `configs`: the visible ones, in order. A no-op when the visible
-   * set/order is unchanged, so it's cheap to call on every pref sync. */
-  setColumns(configs: ColumnConfig[]): void {
-    const visible = configs.filter(c => c.visible && COLUMN_DEF[c.id])
-    const sig = visible.map(c => c.id).join(',')
+   * column) from `configs`: the visible ones, in order. In the Trash the
+   * Original Location column is appended after them — it isn't part of the
+   * persisted config, so it lives outside `configs` and only shows here. A
+   * no-op when the visible set/order (and trash state) is unchanged, so it's
+   * cheap to call on every pref sync. */
+  setColumns(configs: ColumnConfig[], inTrash = false): void {
+    const visible = configs.filter(c => c.visible && COLUMN_DEF[c.id]).map(c => COLUMN_DEF[c.id])
+    if (inTrash) visible.push(TRASH_COLUMN)
+    const sig = visible.map(d => d.id).join(',')
     if (sig === this._columnsSig) return
     this._columnsSig = sig
     for (const col of this._metaCols) this.columnView.removeColumn(col)
-    this._metaCols = visible.map(c => {
-      const col = metaColumn(COLUMN_DEF[c.id])
+    this._metaCols = visible.map(def => {
+      const col = metaColumn(def)
       this.columnView.appendColumn(col)
       return col
     })
