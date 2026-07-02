@@ -5,15 +5,15 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  node-gtk: link:../node-gtk
+  node-gtk: link:../../worktrees/node-gtk-lazy
 
 importers:
 
   .:
     dependencies:
       node-gtk:
-        specifier: link:../node-gtk
-        version: link:../node-gtk
+        specifier: link:../../worktrees/node-gtk-lazy
+        version: link:../../worktrees/node-gtk-lazy
     devDependencies:
       '@types/node':
         specifier: ^22.0.0
