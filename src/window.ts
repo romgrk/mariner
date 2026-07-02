@@ -14,8 +14,9 @@ import { ClipboardService } from './services/clipboard-service.ts'
 import { FileOperations } from './services/file-operations.ts'
 import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
+import { archiveRootFile } from './core/archive-uri.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
-import { promptText, confirm, showProperties, aboutDialog } from './ui/dialogs.ts'
+import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { createToolbar } from './ui/toolbar.ts'
@@ -154,6 +155,7 @@ export class AppWindow {
       onSearchChanged: (text: string) => this.activeTab?.setSearchQuery(text),
       onSearchFilter: (f) => this.activeTab?.setSearchFilter(f),
       onSearchExit: () => { if (this.searching) this._setSearch(false) },
+      onSearchActivate: () => this.activeTab?.view.widget.grabFocus(),
     })
     this.toolbar.packTrailing(this.opsQueue.button)
     this.tabView = new Adw.TabView()
@@ -312,6 +314,7 @@ export class AppWindow {
     this.toolbar.searchButton.setActionName('win.search')
 
     add('select-all', () => this.activeTab?.view.selectAll())
+    add('select-pattern', () => this._selectPattern())
     add('preview', () => { if (this.activeTab) this.togglePreview(this.activeTab) })
     add('open', () => this._openSelection())
     add('open-new-tab', () => this._openNewTab())
@@ -327,6 +330,7 @@ export class AppWindow {
     add('properties', () => this._properties())
     add('empty-trash', () => this._emptyTrash())
     add('restore', () => this._restore())
+    add('restore-to', () => this._restoreTo())
     add('extract-here', () => this._extractHere())
     add('compress', () => this._compress())
     add('disk-usage', () => this._diskUsage())
@@ -428,6 +432,7 @@ export class AppWindow {
     /* Context actions (primary) — same branching as buildContextMenu. */
     if (target && inTrash) {
       act('Restore From Trash', 'restore', { icon: 'edit-undo-symbolic', primary: true })
+      act('Restore to…', 'restore-to', { icon: 'folder-symbolic', primary: true })
       act('Delete Permanently', 'delete', { icon: 'edit-delete-symbolic', primary: true })
       act('Properties', 'properties', { icon: 'document-properties-symbolic', primary: true })
     } else if (target) {
@@ -506,6 +511,7 @@ export class AppWindow {
     act('Back', 'back', { icon: 'go-previous-symbolic' })
     act('Forward', 'forward', { icon: 'go-next-symbolic' })
     act('Select All', 'select-all', { icon: 'edit-select-all-symbolic' })
+    act('Select Items Matching…', 'select-pattern', { icon: 'edit-find-symbolic' })
     act('Invert Selection', 'invert-selection', { icon: 'edit-select-all-symbolic' })
     act('Show Hidden Files', 'show-hidden', { icon: 'view-reveal-symbolic' })
     act('Sort by Name', 'sort-name', { icon: 'view-sort-ascending-symbolic' })
@@ -639,6 +645,9 @@ export class AppWindow {
   /* ---- Activation + context menu ---- */
   onItemActivated(tab: Tab, info: GFileInfo, file: GFile): void {
     if (isDirectory(info)) { tab.navigate(file); return }
+    /* Browse archives in place as a virtual folder (gvfs archive://), reusing
+     * the normal view — no extraction. "Open With…" still launches a manager. */
+    if (isArchive(displayName(info))) { tab.navigate(archiveRootFile(file)); return }
     try { Gio.AppInfo.launchDefaultForUri(file.getUri(), null) }
     catch { this.toast(`Could not open “${displayName(info)}”`) }
   }
@@ -752,6 +761,22 @@ export class AppWindow {
     this.sidebar.refresh()
     this.sidebar.setActive(this.activeTab?.location ?? file)
     this.toast(`Removed “${locationName(file)}” from the sidebar`)
+  }
+
+  /* Select every item in the current folder whose name matches a shell glob
+   * (nautilus's "Select Items Matching", Ctrl+S). */
+  async _selectPattern(): Promise<void> {
+    const view = this.activeTab?.view
+    if (!view) return
+    const pattern = await promptText(this.window, {
+      heading: 'Select Items Matching',
+      body: 'Use * and ? as wildcards (e.g. “*.png”).',
+      placeholder: 'Pattern', okLabel: 'Select',
+    })
+    if (!pattern) return
+    const count = view.selectPattern(pattern)
+    view.focusView()
+    this.toast(count > 0 ? `Selected ${count} item${count === 1 ? '' : 's'}` : 'No items match the pattern')
   }
 
   _openSelection(): void {
@@ -970,6 +995,19 @@ export class AppWindow {
       .map(s => [s.file, s.info.getAttributeByteString('trash::orig-path')] as [GFile, string])
       .filter(p => !!p[1])
     if (pairs.length) this.fileOps.restore(pairs)
+  }
+
+  /* Restore the selected Trash items into a folder the user picks, rather than
+   * their recorded original location (which may no longer exist, or where the
+   * user simply doesn't want them). */
+  async _restoreTo(): Promise<void> {
+    const sel = this._selected()
+    if (!sel.length) return
+    const dir = await chooseFolder(this.window, { title: 'Restore to Folder' })
+    if (!dir) return
+    const items = sel.map(s => ({ file: s.file, name: displayName(s.info) }))
+    if (this.fileOps.restoreTo(items, dir))
+      this.toast(`Restored ${items.length} item${items.length > 1 ? 's' : ''} to “${locationName(dir)}”`)
   }
 
   async _emptyTrash(): Promise<void> {

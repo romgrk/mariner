@@ -11,15 +11,17 @@ interface PromptOptions {
   heading: string
   body?: string
   value?: string
+  placeholder?: string
   okLabel?: string
   selectBasename?: boolean
 }
 
-/* Text prompt (new folder / rename). Resolves to the string, or null on cancel. */
-export function promptText(parent: any, { heading, body, value = '', okLabel = 'OK', selectBasename = false }: PromptOptions): Promise<string | null> {
+/* Text prompt (new folder / rename / select-by-pattern). Resolves to the string,
+ * or null on cancel. */
+export function promptText(parent: any, { heading, body, value = '', placeholder, okLabel = 'OK', selectBasename = false }: PromptOptions): Promise<string | null> {
   return new Promise<string | null>(resolve => {
     const dialog = new Adw.AlertDialog({ heading, body: body ?? '' })
-    const entry = new Gtk.Entry({ text: value, activatesDefault: true, hexpand: true })
+    const entry = new Gtk.Entry({ text: value, placeholderText: placeholder ?? '', activatesDefault: true, hexpand: true })
     dialog.setExtraChild(entry)
     dialog.addResponse('cancel', 'Cancel')
     dialog.addResponse('ok', okLabel)
@@ -42,6 +44,20 @@ export function promptText(parent: any, { heading, body, value = '', okLabel = '
       if (selectBasename && dot > 0) entry.selectRegion(0, dot)
       else entry.selectRegion(0, -1)
     }
+  })
+}
+
+/* Native folder picker (GTK's FileDialog). Resolves to the chosen folder, or
+ * null if the user cancels. Used by the Trash view's "Restore to…" action. */
+export function chooseFolder(parent: any, opts: { title?: string; initialFolder?: GFile } = {}): Promise<GFile | null> {
+  return new Promise<GFile | null>(resolve => {
+    const dialog = new Gtk.FileDialog({ title: opts.title ?? 'Select Folder', modal: true })
+    if (opts.initialFolder) dialog.setInitialFolder(opts.initialFolder)
+    dialog.selectFolder(parent, null, (_src: any, res: any) => {
+      let folder: GFile | null = null
+      try { folder = dialog.selectFolderFinish(res) } catch { /* cancelled */ }
+      resolve(folder)
+    })
   })
 }
 

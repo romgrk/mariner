@@ -18,6 +18,7 @@ export interface ToolbarHandlers {
   onSearchChanged: (text: string) => void
   onSearchFilter: (f: SearchFilter) => void
   onSearchExit: () => void
+  onSearchActivate: () => void
 }
 
 export interface Toolbar {
@@ -33,7 +34,7 @@ export interface Toolbar {
 
 /* Content-area header bar: history, breadcrumb/location/search stack, view
  * controls, new-folder. Buttons drive win.* actions defined by the window. */
-export function createToolbar({ onNavigate, onOpenTab, onOpenWindow, onProperties, onLocationEntry, onLocationExit, onSearchChanged, onSearchFilter, onSearchExit }: ToolbarHandlers): Toolbar {
+export function createToolbar({ onNavigate, onOpenTab, onOpenWindow, onProperties, onLocationEntry, onLocationExit, onSearchChanged, onSearchFilter, onSearchExit, onSearchActivate }: ToolbarHandlers): Toolbar {
   /* The whole header is one hexpanding row (assembled as the title widget) so
    * the pathbar fills all slack between the history group and the window
    * buttons. AdwHeaderBar's own start/end areas are avoided because a centered
@@ -75,6 +76,9 @@ export function createToolbar({ onNavigate, onOpenTab, onOpenWindow, onPropertie
 
   const searchEntry = new Gtk.SearchEntry({ hexpand: true })
   searchEntry.on('search-changed', () => onSearchChanged(searchEntry.getText()))
+  /* Enter moves focus to the file view so results can be navigated/opened with
+   * the keyboard, while the search query and its results stay in place. */
+  searchEntry.on('activate', () => onSearchActivate())
   /* Escape exits search (GtkSearchEntry::stop-search). Otherwise search stays up
    * until the user navigates elsewhere — the window drops it on location change.
    * Blur deliberately does NOT cancel, so opening the filter popover is safe. */

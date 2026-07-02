@@ -1,0 +1,1 @@
+read PLAN.md for plan/details/architecture
