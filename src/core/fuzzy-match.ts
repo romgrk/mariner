@@ -13,11 +13,14 @@
  * greedy scan for the short queries a picker sees, and reconstructs which
  * characters matched for highlighting.
  *
- * Two extensions on top of stock fzy:
+ * Three extensions on top of stock fzy:
  *   - `boostFrom`: a char offset (e.g. a filename's start) whose matches score
  *     higher, so filename hits outrank directory hits.
  *   - `maxTypos`: allow up to N query characters to go unmatched (a heavily
  *     penalised fallback), so a small typo still finds its target.
+ *   - `ignoreTail`: drop stock fzy's penalty for characters after the last
+ *     match, so equally-good matches no longer rank by length (type-to-select
+ *     lands on the first such row in view order rather than the shortest).
  *
  * Matching is case-insensitive by default, but `smartcase` (on by default)
  * makes it case-sensitive as soon as the query contains an uppercase letter —
@@ -58,6 +61,14 @@ export interface FuzzyOptions {
    * case-insensitive. Defaults to `true`. Set `false` to always ignore case.
    */
   smartcase?: boolean;
+  /**
+   * Ignore characters trailing the last match when scoring, so two names that
+   * match the query equally well no longer rank by length (stock fzy's trailing
+   * gap makes the shorter one win). Off by default — a picker keeps the
+   * shorter-is-better bias; type-to-select turns it on so it lands on the first
+   * equally-good row in view order instead of the shortest name.
+   */
+  ignoreTail?: boolean;
 }
 
 // fzy's scoring weights (see jhawthorn/fzy match.h). Scores are small floats; a
@@ -106,7 +117,7 @@ export function fuzzyMatch(query: string, text: string, options: FuzzyOptions = 
   // case-sensitive match; an all-lowercase query stays case-insensitive.
   const caseSensitive = (options.smartcase ?? true) && /[A-Z]/.test(query);
   const needle = caseSensitive ? query : query.toLowerCase();
-  return fuzzyMatchPrepared(needle, prepare(text), caseSensitive, options.boostFrom, options.maxTypos);
+  return fuzzyMatchPrepared(needle, prepare(text), caseSensitive, options.boostFrom, options.maxTypos, options.ignoreTail);
 }
 
 /** Build the query-independent `Prepared` for a candidate's text (cache it). */
@@ -126,12 +137,13 @@ export function fuzzyMatchPrepared(
   caseSensitive: boolean,
   boostFrom: number = Number.POSITIVE_INFINITY,
   maxTypos: number = 0,
+  ignoreTail: boolean = false,
 ): FuzzyMatch | null {
   if (needle.length === 0) return { score: 0, positions: [] };
-  const exact = fzyMatch(needle, prepared, caseSensitive, boostFrom);
+  const exact = fzyMatch(needle, prepared, caseSensitive, boostFrom, ignoreTail);
   if (exact) return exact;
   if (maxTypos <= 0) return null;
-  return approxMatch(needle, prepared, caseSensitive, boostFrom, maxTypos);
+  return approxMatch(needle, prepared, caseSensitive, boostFrom, maxTypos, ignoreTail);
 }
 
 /** Stock fzy: requires `needle` to be a strict subsequence of the haystack. */
@@ -140,6 +152,7 @@ function fzyMatch(
   prepared: Prepared,
   caseSensitive: boolean,
   boostFrom: number,
+  ignoreTail: boolean = false,
 ): FuzzyMatch | null {
   const haystack = caseSensitive ? prepared.text : prepared.lowerText;
   const m = needle.length;
@@ -168,7 +181,9 @@ function fzyMatch(
 
   for (let i = 0; i < m; i++) {
     let prevScore = SCORE_MIN;
-    const gap = i === m - 1 ? GAP_TRAILING : GAP_INNER;
+    // Last needle char: trailing chars decay the running max (favouring shorter
+    // names) unless `ignoreTail` zeroes that gap so length stops mattering.
+    const gap = i === m - 1 ? (ignoreTail ? 0 : GAP_TRAILING) : GAP_INNER;
     const iBase = i * n;
     const pBase = iBase - n; // (i - 1) * n; only read when i > 0
 
@@ -232,6 +247,7 @@ function approxMatch(
   caseSensitive: boolean,
   boostFrom: number,
   maxTypos: number,
+  ignoreTail: boolean = false,
 ): FuzzyMatch | null {
   let best: FuzzyMatch | null = null;
   for (let k = 0; k < needle.length; k++) {
@@ -241,9 +257,9 @@ function approxMatch(
     // with the prepared haystack — carry `caseSensitive` through unchanged.
     const match =
       maxTypos > 1
-        ? fzyMatch(reduced, prepared, caseSensitive, boostFrom) ??
-          approxMatch(reduced, prepared, caseSensitive, boostFrom, maxTypos - 1)
-        : fzyMatch(reduced, prepared, caseSensitive, boostFrom);
+        ? fzyMatch(reduced, prepared, caseSensitive, boostFrom, ignoreTail) ??
+          approxMatch(reduced, prepared, caseSensitive, boostFrom, maxTypos - 1, ignoreTail)
+        : fzyMatch(reduced, prepared, caseSensitive, boostFrom, ignoreTail);
     if (match && (!best || match.score > best.score)) best = match;
   }
   if (!best) return null;

@@ -9,6 +9,7 @@ import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
 import type { CellContext } from './cells.ts'
+import { fuzzyMatch } from '../core/fuzzy-match.ts'
 import { COLUMN_DEF, defaultColumnConfig } from '../core/columns.ts'
 import { FloatingBar } from './floating-bar.ts'
 import { makeDragSource, makeDropTarget } from './dnd.ts'
@@ -576,8 +577,8 @@ export class FileView {
   }
 
   /* ---- Typeahead (type-to-select) ----
-   * Typing plain characters while the view is focused selects the first item
-   * whose name matches; the buffer resets after a short idle. */
+   * Typing plain characters while the view is focused selects the item whose
+   * name best fuzzy-matches the buffer; the buffer resets after a short idle. */
   _installTypeahead(view: any): void {
     const controller = new Gtk.EventControllerKey()
     /* CAPTURE phase: intercept keys before the grid/column view's built-in
@@ -633,20 +634,28 @@ export class FileView {
     else this.floatingBar.hide()
   }
 
+  /* Rank every row by fuzzy score (the same fzy scorer the command palette uses)
+   * and select the best match. fzy strongly rewards prefix / consecutive runs,
+   * so a literal "doc…" file still wins for the query "doc", while a scattered
+   * subsequence ("myDocument") is matched too when nothing better exists — a
+   * strict superset of the old prefix-then-substring scan.
+   *
+   * `ignoreTail` drops fzy's shorter-is-better bias, so two names that match
+   * equally well tie; `> best` then keeps the first such row, resolving ties to
+   * view (sorted) order — you land on the first matching row like a classic
+   * file manager, not the shortest name, and the selection never wanders. */
   _typeaheadFind(): void {
-    const needle = this._typeahead.toLowerCase()
+    const query = this._typeahead
     const n = this.store.getNItems()
-    const scan = (test: (name: string) => boolean): number => {
-      for (let i = 0; i < n; i++)
-        if (test(displayName(this.store.getItem(i)).toLowerCase())) return i
-      return -1
+    let bestIndex = -1
+    let bestScore = -Infinity
+    for (let i = 0; i < n; i++) {
+      const m = fuzzyMatch(query, displayName(this.store.getItem(i)), { ignoreTail: true })
+      if (m && m.score > bestScore) { bestScore = m.score; bestIndex = i }
     }
-    /* Prefer a prefix match, fall back to substring. */
-    let match = scan(name => name.startsWith(needle))
-    if (match < 0) match = scan(name => name.includes(needle))
-    if (match < 0) return
-    this.selection.selectItem(match, true)
-    this._scrollItemIntoView(match, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT)
+    if (bestIndex < 0) return
+    this.selection.selectItem(bestIndex, true)
+    this._scrollItemIntoView(bestIndex, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT)
   }
 
   _armTypeaheadTimer(): void {
