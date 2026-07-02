@@ -154,6 +154,7 @@ export class AppWindow {
       onSearchChanged: (text: string) => this.activeTab?.setSearchQuery(text),
       onSearchFilter: (f) => this.activeTab?.setSearchFilter(f),
       onSearchExit: () => { if (this.searching) this._setSearch(false) },
+      onSearchActivate: () => this.activeTab?.view.widget.grabFocus(),
     })
     this.toolbar.packTrailing(this.opsQueue.button)
     this.tabView = new Adw.TabView()
