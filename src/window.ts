@@ -7,7 +7,7 @@ import Gdk from 'gi:Gdk-4.0'
 
 import { Tab } from './tab.ts'
 import { ACCELS, accelHint } from './accels.ts'
-import { F, fileForPath, fileForUri, ATTRS } from './core/gio.ts'
+import { fileForPath, fileForUri, ATTRS } from './core/gio.ts'
 import { HOME, locationName, isDirectory, displayName, tildePath } from './core/format.ts'
 import { recentFolders } from './services/recent-folders.ts'
 import { ClipboardService } from './services/clipboard-service.ts'
@@ -219,7 +219,7 @@ export class AppWindow {
 
     /* Track cut files so the view can dim them until pasted. */
     this.clipboard.on('changed', () => {
-      this._cutUris = new Set(this.clipboard.cut ? this.clipboard.files.map(f => F.getUri(f)) : [])
+      this._cutUris = new Set(this.clipboard.cut ? this.clipboard.files.map(f => f.getUri()) : [])
       for (const p of this.activeTab?.panes ?? []) p.view.refreshCells()
     })
 
@@ -347,7 +347,7 @@ export class AppWindow {
     const sel = this._selected()[0]
     if (sel && isDirectory(sel.info)) { showProperties(this.window, sel.info, sel.file, { expandUsage: true }); return }
     const loc = this.activeTab?.location
-    if (loc && F.getPath(loc)) { this._propertiesFor(loc, { expandUsage: true }); return }
+    if (loc && loc.getPath()) { this._propertiesFor(loc, { expandUsage: true }); return }
     this.toast('Disk usage is only available for local folders')
   }
 
@@ -375,7 +375,7 @@ export class AppWindow {
     const plan = await this._resolvePlan(files, dest, move)
     if (!plan || !plan.length) return
     if (move) {
-      const origParent = F.getParent(files[0])
+      const origParent = files[0].getParent()
       let dests = this.fileOps.moveItems(plan)
       if (origParent) this.undo.push({
         undo: () => { dests = this.fileOps.move(dests, origParent) },
@@ -454,7 +454,7 @@ export class AppWindow {
     /* Bookmark the selected folder — or the current folder if none is selected —
      * toggling to "Remove Bookmark" when it's already bookmarked. */
     const bmFile = target && isDirectory(target.info) ? target.file : tab?.location ?? null
-    if (bmFile && !inTrash && F.getUri(bmFile).startsWith('file://')) {
+    if (bmFile && !inTrash && bmFile.getUri().startsWith('file://')) {
       if (isBookmarked(bmFile))
         items.push({ label: 'Remove Bookmark', group: 'action', search: 'Remove Bookmark', icon: 'user-bookmarks-symbolic', primary: true, run: () => this._removeBookmark(bmFile) })
       else
@@ -469,7 +469,7 @@ export class AppWindow {
     }
 
     /* Recent folders (primary), most-frecent first, excluding the current one. */
-    const curUri = tab?.location ? F.getUri(tab.location) : undefined
+    const curUri = tab?.location ? tab.location.getUri() : undefined
     const recents = recentFolders(curUri)
     const maxScore = recents[0]?.score || 1
     for (const r of recents) {
@@ -522,7 +522,7 @@ export class AppWindow {
   }
 
   _inTrash(file: GFile | null = this.activeTab?.location ?? null): boolean {
-    return !!file && F.getUri(file).startsWith('trash:')
+    return !!file && file.getUri().startsWith('trash:')
   }
 
   _syncSort(): void {
@@ -574,9 +574,9 @@ export class AppWindow {
     if (text.startsWith('~')) file = fileForPath(HOME + text.slice(1))
     else if (/^[a-z]+:\/\//i.test(text)) file = fileForUri(text)
     else if (text.startsWith('/')) file = fileForPath(text)
-    else file = F.getChild(this.activeTab!.location, text)
+    else file = this.activeTab!.location.getChild(text)
 
-    if (F.queryExists(file, null)) { this.toolbar.showStack('pathbar'); this.navigate(file) }
+    if (file.queryExists(null)) { this.toolbar.showStack('pathbar'); this.navigate(file) }
     else this.toast('Location not found')
   }
 
@@ -617,7 +617,7 @@ export class AppWindow {
      * location that navigation just loaded is left intact. */
     if (this.searching && !tab.searching) this._setSearch(false)
     this.toolbar.pathbar.setLocation(tab.location)
-    this.toolbar.locationEntry.setText(F.getPath(tab.location) || F.getUri(tab.location))
+    this.toolbar.locationEntry.setText(tab.location.getPath() || tab.location.getUri())
     this.toolbar.setViewIcon(this.prefs.viewMode)
     this.window.setTitle(locationName(tab.location))
     this.backAction.setEnabled(tab.canGoBack)
@@ -630,7 +630,7 @@ export class AppWindow {
   /* ---- Activation + context menu ---- */
   onItemActivated(tab: Tab, info: GFileInfo, file: GFile): void {
     if (isDirectory(info)) { tab.navigate(file); return }
-    try { Gio.AppInfo.launchDefaultForUri(F.getUri(file), null) }
+    try { Gio.AppInfo.launchDefaultForUri(file.getUri(), null) }
     catch { this.toast(`Could not open “${displayName(info)}”`) }
   }
 
@@ -641,7 +641,7 @@ export class AppWindow {
      * real folders outside the Trash can be bookmarked. */
     const bmFile = target && isDirectory(target.info) && !inTrash ? target.file : null
     this._ctxFile = bmFile
-    const bookmark: 'add' | 'remove' | null = bmFile && F.getUri(bmFile).startsWith('file://')
+    const bookmark: 'add' | 'remove' | null = bmFile && bmFile.getUri().startsWith('file://')
       ? (isBookmarked(bmFile) ? 'remove' : 'add') : null
     this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark }), widget, x, y)
   }
@@ -716,7 +716,7 @@ export class AppWindow {
     if (!files.length || !this.activeTab) return
     const dest = this.activeTab.location
     if (!this.fileOps.link(files, dest)) return
-    const links = files.map(f => F.getChild(dest, F.getBasename(f)))
+    const links = files.map(f => dest.getChild(f.getBasename()))
     this.undo.push({
       undo: () => this.fileOps.trash(links),
       redo: () => this.fileOps.link(files, dest),
@@ -730,7 +730,7 @@ export class AppWindow {
    * (Recent, Trash, Computer) already have their own permanent sidebar entries. */
   _addBookmark(file: GFile | null): void {
     if (!file) return
-    if (!F.getUri(file).startsWith('file://')) { this.toast('Only folders can be bookmarked'); return }
+    if (!file.getUri().startsWith('file://')) { this.toast('Only folders can be bookmarked'); return }
     if (isBookmarked(file)) { this.toast(`“${locationName(file)}” is already bookmarked`); return }
     if (!addBookmark(file)) { this.toast('Could not save bookmark'); return }
     this.sidebar.refresh()
@@ -755,7 +755,7 @@ export class AppWindow {
   }
 
   _openTerminal(): void {
-    const path = this.activeTab && F.getPath(this.activeTab.location)
+    const path = this.activeTab && this.activeTab.location.getPath()
     if (!path) return
     const launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.NONE)
     launcher.setCwd(path)
@@ -770,7 +770,7 @@ export class AppWindow {
     if (!sel) return
     try {
       const settings = new Gio.Settings({ schemaId: 'org.gnome.desktop.background' })
-      const uri = F.getUri(sel.file)
+      const uri = sel.file.getUri()
       settings.setString('picture-uri', uri)
       settings.setString('picture-uri-dark', uri)
       this.toast('Wallpaper set')
@@ -805,13 +805,13 @@ export class AppWindow {
    * folder (the cross-app case). Files already in the destination are skipped. */
   async onDropFiles(tab: Tab, files: GFile[], targetDir?: GFile): Promise<void> {
     const dest = targetDir ?? tab.location
-    const destUri = F.getUri(dest)
-    const incoming = files.filter(f => { const p = F.getParent(f); return !p || F.getUri(p) !== destUri })
+    const destUri = dest.getUri()
+    const incoming = files.filter(f => { const p = f.getParent(); return !p || p.getUri() !== destUri })
     if (!incoming.length) return
     const plan = await this._resolvePlan(incoming, dest, !!targetDir)
     if (!plan || !plan.length) return
     if (targetDir) {
-      const origParent = F.getParent(incoming[0])
+      const origParent = incoming[0].getParent()
       let dests = this.fileOps.moveItems(plan)
       if (origParent) this.undo.push({
         undo: () => { dests = this.fileOps.move(dests, origParent) },
@@ -835,12 +835,12 @@ export class AppWindow {
    * folder is handled sanely (see below) instead of prompting to overwrite it. */
   async _resolvePlan(files: GFile[], destDir: GFile, move = false): Promise<CopyItem[] | null> {
     const { free, conflicts } = partitionConflicts(files, destDir)
-    const items: CopyItem[] = free.map(src => ({ src, dest: F.getChild(destDir, F.getBasename(src)) }))
+    const items: CopyItem[] = free.map(src => ({ src, dest: destDir.getChild(src.getBasename()) }))
     /* A collision where the destination *is* the source (pasting an item into
      * its own folder) is never a real overwrite: copy → duplicate ("keep both"),
      * move → no-op, so skip. Don't prompt. */
     const real = conflicts.filter(c => {
-      if (!F.equal(c.src, c.dest)) return true
+      if (!c.src.equal(c.dest)) return true
       if (!move) items.push({ src: c.src, dest: uniqueChild(destDir, c.name) })
       return false
     })
@@ -866,7 +866,7 @@ export class AppWindow {
     const plan = await this._resolvePlan(files, dest, cut)
     if (!plan || !plan.length) return
     if (cut) {
-      const origParent = F.getParent(files[0])
+      const origParent = files[0].getParent()
       let dests = this.fileOps.moveItems(plan)
       this.clipboard.clear()
       if (origParent) this.undo.push({
@@ -952,7 +952,7 @@ export class AppWindow {
   /* Properties for an arbitrary file (pathbar crumb menu, Computer drive menu). */
   _propertiesFor(file: GFile, opts?: { expandUsage?: boolean }): void {
     try {
-      const info = F.queryInfo(file, ATTRS, Gio.FileQueryInfoFlags.NONE, null)
+      const info = file.queryInfo(ATTRS, Gio.FileQueryInfoFlags.NONE, null)
       showProperties(this.window, info, file, opts)
     } catch {}
   }
@@ -967,10 +967,10 @@ export class AppWindow {
   async _compress(): Promise<void> {
     const files = this._selectedFiles()
     if (!files.length || !this.activeTab) return
-    const base = files.length === 1 ? F.getBasename(files[0]) : 'Archive'
+    const base = files.length === 1 ? files[0].getBasename() : 'Archive'
     const res = await compressDialog(this.window, base)
     if (!res) return
-    this.archive.compress(files, F.getChild(this.activeTab.location, res.name), res.format)
+    this.archive.compress(files, this.activeTab.location.getChild(res.name), res.format)
   }
 
   _restore(): void {

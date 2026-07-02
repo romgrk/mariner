@@ -1,6 +1,5 @@
 import { EventEmitter } from '../core/emitter.ts'
 import { ProcessStream } from '../core/process-stream.ts'
-import { F } from '../core/gio.ts'
 import type { GFile } from '../core/types.ts'
 
 export type ArchiveFormat = 'zip' | 'tar.xz' | 'tar.gz' | '7z'
@@ -17,20 +16,20 @@ let nextArchiveId = 0
  * progress): 'begin' {id,title}, 'done' {id,title}, 'error' {id,title,message}. */
 export class ArchiveService extends EventEmitter {
   extract(archive: GFile, destDir: GFile): void {
-    const path = F.getPath(archive)
-    const dest = F.getPath(destDir)
+    const path = archive.getPath()
+    const dest = destDir.getPath()
     if (!path || !dest) return this._fail('Extract', 'Not a local location')
     const argv = extractArgv(path, dest)
     if (!argv) return this._fail('Extract', 'Unsupported archive format')
-    this._run(`Extracting ${F.getBasename(archive)}`, argv)
+    this._run(`Extracting ${archive.getBasename()}`, argv)
   }
 
   compress(files: GFile[], out: GFile, format: ArchiveFormat): void {
-    const outPath = F.getPath(out)
-    const parent = files.length ? F.getParent(files[0]) : null
-    const cwd = parent && F.getPath(parent)
+    const outPath = out.getPath()
+    const parent = files.length ? files[0].getParent() : null
+    const cwd = parent && parent.getPath()
     if (!outPath || !cwd) return this._fail('Compress', 'Not a local location')
-    const names = files.map(f => F.getBasename(f))
+    const names = files.map(f => f.getBasename())
     this._run(`Compressing ${names.length} item${names.length > 1 ? 's' : ''}`, compressArgv(format, outPath, names), cwd)
   }
 

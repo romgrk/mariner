@@ -7,7 +7,7 @@ import { SearchService } from './services/search-service.ts'
 import { COMPUTER_URI } from './services/places-service.ts'
 import { History } from './core/navigation.ts'
 import { recordFolderVisit } from './services/recent-folders.ts'
-import { F, fileForUri } from './core/gio.ts'
+import { fileForUri } from './core/gio.ts'
 import type { Entry, GFile, GFileInfo, Prefs, ViewConfig, SearchFilter } from './core/types.ts'
 
 /* A single browsing pane: binds a DirectoryService + SearchService to one
@@ -72,11 +72,11 @@ export class Pane {
   get canGoBack(): boolean { return this.history.canGoBack }
   get canGoForward(): boolean { return this.history.canGoForward }
   get parent(): GFile | null {
-    const p = F.getParent(this.location)
+    const p = this.location.getParent()
     if (p) return p
     /* The Computer view sits above the filesystem root, so Up from "/" lands
      * there (and enables the Up button at "/"). */
-    if (this.location && F.getPath(this.location) === '/') return fileForUri(COMPUTER_URI)
+    if (this.location && this.location.getPath() === '/') return fileForUri(COMPUTER_URI)
     return null
   }
   get searchActive(): boolean { return !!this.searchQuery || this.searchFilter.category !== 'all' || this.searchFilter.since > 0 }
@@ -85,7 +85,7 @@ export class Pane {
   _wire(): void {
     this.dir.on('loading', () => { this.view.configure(this._dirConfig()); this.view.beginLoading() })
     this.dir.on('items', (batch: GFileInfo[]) => this.view.addEntries(
-      batch.map((info): Entry => ({ info, file: F.getChild(this.location, info.getName()) }))))
+      batch.map((info): Entry => ({ info, file: this.location.getChild(info.getName()) }))))
     this.dir.on('ready', () => this.view.finishLoading('folder'))
     this.dir.on('error', (msg: string) => this.view.showError(msg))
     this.dir.on('invalidated', () => { if (!this.isShowingSearch) this.dir.load(this.location) })
@@ -109,13 +109,13 @@ export class Pane {
   }
 
   /* ---- navigation ---- */
-  get isComputer(): boolean { return !!this.location && F.getUri(this.location).startsWith('computer:') }
+  get isComputer(): boolean { return !!this.location && this.location.getUri().startsWith('computer:') }
 
   navigate(file: GFile, push = true): void {
     this._exitSearch()
     if (push && this.location) this.history.visit(this.location)
     this.location = file
-    recordFolderVisit(F.getUri(file))
+    recordFolderVisit(file.getUri())
     this._load(file)
     this.onChanged()
   }
@@ -132,7 +132,7 @@ export class Pane {
     if (!file) return
     this._exitSearch()
     this.location = file
-    recordFolderVisit(F.getUri(file))
+    recordFolderVisit(file.getUri())
     this._load(file)
     this.onChanged()
   }
@@ -140,7 +140,7 @@ export class Pane {
   /* Show the location: the Computer interface for computer:///, otherwise load
    * the directory into the file view. */
   _load(file: GFile): void {
-    if (F.getUri(file).startsWith('computer:')) {
+    if (file.getUri().startsWith('computer:')) {
       this.computer.refresh()
       this.paneStack.setVisibleChildName('computer')
     } else {

@@ -1,6 +1,5 @@
 import Gio from 'gi:Gio-2.0'
 import Gtk from 'gi:Gtk-4.0'
-import { F } from '../core/gio.ts'
 import { getPlaces, getBookmarks, getComputer, getDevices } from '../services/places-service.ts'
 import { initVolumeMonitor } from '../services/volume-monitor.ts'
 import type { GFile, Place } from '../core/types.ts'
@@ -106,7 +105,7 @@ export function createSidebar(
     }
 
     list.append(row)
-    rows.push({ row, uri: F.getUri(place.file) })
+    rows.push({ row, uri: place.file.getUri() })
   }
 
   function build(): void {
@@ -129,7 +128,7 @@ export function createSidebar(
   }
 
   function setActive(file: GFile): void {
-    activeUri = F.getUri(file)
+    activeUri = file.getUri()
     applyActive()
   }
 

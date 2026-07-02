@@ -1,6 +1,5 @@
 import Gtk from 'gi:Gtk-4.0'
 import Pango from 'gi:Pango-1.0'
-import { F } from '../core/gio.ts'
 import { thumbnails } from '../services/thumbnail-service.ts'
 import { displayName } from '../core/format.ts'
 import type { ColumnDef } from '../core/columns.ts'
@@ -32,9 +31,9 @@ function applyCut(box: any, info: GFileInfo, ctx: CellContext): void {
  * the image with the key it is currently displaying. */
 function applyThumbnail(image: any, info: GFileInfo): void {
   const file = info._file
-  const path = file && F.getPath(file)
+  const path = file && file.getPath()
   if (!path) { image._thumbKey = null; return }
-  const uri = F.getUri(file)
+  const uri = file.getUri()
   const key = uri + '|' + info.getAttributeUint64('time::modified')
   image._thumbKey = key
   thumbnails.request({ key, path, uri, contentType: info.getContentType() || '', bytes: Number(info.getSize()) }, tex => {

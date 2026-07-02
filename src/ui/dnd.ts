@@ -2,7 +2,6 @@ import Gtk from 'gi:Gtk-4.0'
 import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
 import GObject from 'gi:GObject-2.0'
-import { F } from '../core/gio.ts'
 import type { GFile } from '../core/types.ts'
 
 const FILE_LIST_TYPE = GObject.typeFromName('GdkFileList')
@@ -18,7 +17,7 @@ function fileListValue(files: GFile[]): any {
  * and x-special/gnome-copied-files (the format nautilus/GTK apps paste), so our
  * cut/copy is understood by other file managers. */
 export function fileClipboardProvider(files: GFile[], cut: boolean): any {
-  const uris = files.map(f => F.getUri(f))
+  const uris = files.map(f => f.getUri())
   const uriList = new GLib.Bytes(Buffer.from(uris.join('\r\n') + '\r\n', 'utf8'))
   const gnome = new GLib.Bytes(Buffer.from(`${cut ? 'cut' : 'copy'}\n${uris.join('\n')}`, 'utf8'))
   return Gdk.ContentProvider.newUnion([

@@ -1,6 +1,5 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
-import { F } from '../core/gio.ts'
 import {
   displayName, formatType, formatSize, formatBytes, formatModified, isDirectory,
 } from '../core/format.ts'
@@ -99,8 +98,8 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile, opts: 
   row('Name', displayName(info))
   row('Type', formatType(info))
   if (!isDirectory(info)) row('Size', formatSize(info))
-  const parentDir = F.getParent(file)
-  row('Location', parentDir ? F.getPath(parentDir) : '')
+  const parentDir = file.getParent()
+  row('Location', parentDir ? parentDir.getPath() : '')
   row('Modified', formatModified(info))
   row('Permissions', permString(info))
 
@@ -111,7 +110,7 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile, opts: 
    * expandable content. Nothing scans on open — pressing Scan (or opening via
    * "Analyze Disk Usage") walks the tree once, filling both the summary and the
    * chart; the walk is cancelled when the dialog closes. */
-  const usagePath = isDirectory(info) ? F.getPath(file) : null
+  const usagePath = isDirectory(info) ? file.getPath() : null
   if (usagePath) {
     dialog.setContentHeight(640)
 

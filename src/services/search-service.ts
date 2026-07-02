@@ -3,7 +3,7 @@ import GLib from 'gi:GLib-2.0'
 import { fileURLToPath } from 'node:url'
 import { EventEmitter } from '../core/emitter.ts'
 import { ProcessStream } from '../core/process-stream.ts'
-import { F, ATTRS, fileForPath } from '../core/gio.ts'
+import { ATTRS, fileForPath } from '../core/gio.ts'
 import { modifiedUnix } from '../core/format.ts'
 import type { GFile, GFileInfo, SearchFilter } from '../core/types.ts'
 
@@ -59,7 +59,7 @@ export class SearchService extends EventEmitter {
     const token = this.cancellable = new Gio.Cancellable()
     this.emit('start')
 
-    const path = F.getPath(rootDir)
+    const path = rootDir.getPath()
     const wantContent = !!(filter?.contents && query && path)
     this._contentMode = wantContent
 
@@ -84,11 +84,11 @@ export class SearchService extends EventEmitter {
     if (this._contentMode) { if (!line) return; path = line }
     else { try { path = JSON.parse(line) } catch { return } }
     const file = fileForPath(path)
-    F.queryInfoAsync(file, ATTRS, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, token,
+    file.queryInfoAsync(ATTRS, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, token,
       (_src: any, res: any) => {
         if (token.isCancelled()) return
         let info
-        try { info = F.queryInfoFinish(file, res) } catch { return }
+        try { info = file.queryInfoFinish(res) } catch { return }
         if (matchesFilter(info, this.filter)) this.emit('result', { info, file })
       })
   }

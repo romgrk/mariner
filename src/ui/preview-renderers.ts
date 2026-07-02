@@ -3,7 +3,6 @@ import Adw from 'gi:Adw-1'
 import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
 import { open } from 'node:fs/promises'
-import { F } from '../core/gio.ts'
 import { displayName, formatType, formatSize, formatModified, isDirectory } from '../core/format.ts'
 import type { GFile, GFileInfo } from '../core/types.ts'
 
@@ -27,7 +26,7 @@ function isTextType(ct: string): boolean {
 /* Build a preview widget for one entry. */
 export function renderPreview(info: GFileInfo, file: GFile): any {
   const ct = info.getContentType() || ''
-  const path = F.getPath(file)
+  const path = file.getPath()
 
   if (!isDirectory(info) && ct.startsWith('image/')) return imagePreview(file)
   if (!isDirectory(info) && (ct.startsWith('video/') || ct.startsWith('audio/'))) return mediaPreview(file)
@@ -88,7 +87,7 @@ function metadataCard(info: GFileInfo, file: GFile): any {
   if (!isDirectory(info)) parts.push(formatSize(info))
   const mod = formatModified(info)
   if (mod) parts.push(mod)
-  const path = F.getPath(file)
+  const path = file.getPath()
   page.setDescription(parts.filter(Boolean).join(' · ') + (path ? `\n${path}` : ''))
   return page
 }

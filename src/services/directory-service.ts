@@ -1,7 +1,7 @@
 import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
 import { EventEmitter } from '../core/emitter.ts'
-import { F, ATTRS } from '../core/gio.ts'
+import { ATTRS } from '../core/gio.ts'
 import type { GFile } from '../core/types.ts'
 
 const BATCH = 64
@@ -28,15 +28,14 @@ export class DirectoryService extends EventEmitter {
     const token = this.cancellable = new Gio.Cancellable()
     this.emit('loading')
 
-    F.enumerateChildrenAsync(
-      dir, ATTRS, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, token,
-      (_src: any, res: any) => {
-        if (token.isCancelled()) return
-        let en
-        try { en = F.enumerateChildrenFinish(dir, res) }
-        catch (e: any) { this.emit('error', e.message); return }
-        this._pump(en, token, 0)
-      })
+    dir.enumerateChildrenAsync(ATTRS, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, token,
+    (_src: any, res: any) => {
+      if (token.isCancelled()) return
+      let en
+      try { en = dir.enumerateChildrenFinish(res) }
+      catch (e: any) { this.emit('error', e.message); return }
+      this._pump(en, token, 0)
+    })
 
     this._watch(dir)
   }
@@ -60,7 +59,7 @@ export class DirectoryService extends EventEmitter {
   _watch(dir: GFile): void {
     this._unwatch()
     try {
-      this.monitor = F.monitorDirectory(dir, Gio.FileMonitorFlags.WATCH_MOVES, null)
+      this.monitor = dir.monitorDirectory(Gio.FileMonitorFlags.WATCH_MOVES, null)
       this.monitor.on('changed', () => {
         if (this._debounce) return
         this._debounce = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, 150, () => {

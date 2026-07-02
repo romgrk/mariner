@@ -1,6 +1,6 @@
 import GLib from 'gi:GLib-2.0'
 import { writeFileSync, mkdirSync } from 'node:fs'
-import { F, fileForPath, fileForUri } from '../core/gio.ts'
+import { fileForPath, fileForUri } from '../core/gio.ts'
 import { HOME } from '../core/format.ts'
 import { volumeMonitor } from './volume-monitor.ts'
 import type { Place, GFile } from '../core/types.ts'
@@ -76,21 +76,21 @@ export function getBookmarks(): Place[] {
      * (sftp://, smb://, …); querying those would block on the gvfs daemon, and
      * we can't cheaply verify remote availability here anyway — keep them and
      * let the user click through. */
-    if (F.getPath(file) != null && !F.queryExists(file, null)) continue
-    out.push({ label: label || F.getBasename(file), icon: 'folder-symbolic', file })
+    if (file.getPath() != null && !file.queryExists(null)) continue
+    out.push({ label: label || file.getBasename(), icon: 'folder-symbolic', file })
   }
   return out
 }
 
 export function isBookmarked(file: GFile): boolean {
-  const uri = F.getUri(file)
+  const uri = file.getUri()
   return readBookmarkLines().some(line => bookmarkUri(line) === uri)
 }
 
 /* Append `file` to the bookmarks (no custom label — the sidebar falls back to
  * the folder's basename). Returns false if already bookmarked or the write failed. */
 export function addBookmark(file: GFile): boolean {
-  const uri = F.getUri(file)
+  const uri = file.getUri()
   const lines = readBookmarkLines()
   if (lines.some(line => bookmarkUri(line) === uri)) return false
   lines.push(uri)
@@ -99,7 +99,7 @@ export function addBookmark(file: GFile): boolean {
 
 /* Drop every bookmark pointing at `file`. Returns false if none matched. */
 export function removeBookmark(file: GFile): boolean {
-  const uri = F.getUri(file)
+  const uri = file.getUri()
   const lines = readBookmarkLines()
   const kept = lines.filter(line => bookmarkUri(line) !== uri)
   if (kept.length === lines.length) return false

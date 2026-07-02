@@ -1,6 +1,5 @@
 import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
-import { F } from './gio.ts'
 import type { GFile, GFileInfo } from './types.ts'
 
 export const HOME: string = GLib.getHomeDir()
@@ -102,8 +101,8 @@ export function modifiedUnix(info: GFileInfo): number {
 /* Path with $HOME abbreviated to `~` (for the command palette's folder list);
  * falls back to the URI for non-local locations (trash:, recent:, mounts). */
 export function tildePath(file: GFile): string {
-  const path = F.getPath(file)
-  if (!path) return F.getUri(file)
+  const path = file.getPath()
+  if (!path) return file.getUri()
   if (path === HOME) return '~'
   if (path.startsWith(HOME + '/')) return '~' + path.slice(HOME.length)
   return path
@@ -111,13 +110,13 @@ export function tildePath(file: GFile): string {
 
 /* Human label for a location (tab title / window title). */
 export function locationName(file: GFile): string {
-  const path = F.getPath(file)
+  const path = file.getPath()
   if (path === HOME) return 'Home'
-  if (path) return F.getBasename(file)
-  const uri = F.getUri(file)
+  if (path) return file.getBasename()
+  const uri = file.getUri()
   if (uri.startsWith('trash:')) return 'Trash'
   if (uri.startsWith('recent:')) return 'Recent'
   if (uri.startsWith('network:')) return 'Network'
   if (uri.startsWith('computer:')) return 'Computer'
-  return F.getBasename(file) || uri
+  return file.getBasename() || uri
 }

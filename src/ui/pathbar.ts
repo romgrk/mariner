@@ -3,7 +3,6 @@ import Gdk from 'gi:Gdk-4.0'
 import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
 import Pango from 'gi:Pango-1.0'
-import { F } from '../core/gio.ts'
 import { HOME } from '../core/format.ts'
 import { volumeMonitor } from '../services/volume-monitor.ts'
 import type { GFile } from '../core/types.ts'
@@ -76,7 +75,7 @@ function mountForRoot(file: GFile): any | null {
   if (!mon) return null
   try {
     for (const m of mon.getMounts())
-      if (F.equal(m.getRoot(), file)) return m
+      if (m.getRoot().equal(file)) return m
   } catch {}
   return null
 }
@@ -86,9 +85,9 @@ function mountForRoot(file: GFile): any | null {
  * a "root" (which stops the ancestor walk — nautilus never shows crumbs above
  * Home, the filesystem root, a mount, trash, recent, …). */
 function classify(file: GFile): Crumb {
-  const path = F.getPath(file)
-  const scheme = (F.getUriScheme(file) || '').toLowerCase()
-  const isSchemeRoot = !F.getParent(file)
+  const path = file.getPath()
+  const scheme = (file.getUriScheme() || '').toLowerCase()
+  const isSchemeRoot = !file.getParent()
 
   if (path === '/')
     return { type: 'root', name: osName(), iconName: ICON_FILESYSTEM, gicon: null, isRoot: true }
@@ -112,9 +111,9 @@ function classify(file: GFile): Crumb {
   if (scheme === 'computer' && isSchemeRoot)
     return { type: 'computer', name: 'Computer', iconName: 'computer-symbolic', gicon: null, isRoot: true }
   if (scheme === 'burn' && isSchemeRoot)
-    return { type: 'burn', name: F.getBasename(file) || 'CD/DVD Creator', iconName: null, gicon: null, isRoot: true }
+    return { type: 'burn', name: file.getBasename() || 'CD/DVD Creator', iconName: null, gicon: null, isRoot: true }
 
-  return { type: 'normal', name: F.getBasename(file) || '/', iconName: null, gicon: null, isRoot: false }
+  return { type: 'normal', name: file.getBasename() || '/', iconName: null, gicon: null, isRoot: false }
 }
 
 function safeGicon(mount: any): any | null {
@@ -297,7 +296,7 @@ export function createPathBar(handlers: PathBarHandlers): PathBar {
       chain.unshift({ file: f, crumb, current: first })
       first = false
       if (crumb.isRoot) break
-      f = F.getParent(f)
+      f = f.getParent()
     }
     for (const c of chain) buttonsBox.append(makeButton(c.file, c.crumb, c.current))
   }

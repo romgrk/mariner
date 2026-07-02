@@ -1,6 +1,5 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
-import { F } from '../core/gio.ts'
 import { locationName } from '../core/format.ts'
 import type { GFile } from '../core/types.ts'
 
@@ -61,9 +60,9 @@ export function partitionConflicts(files: GFile[], destDir: GFile): { free: GFil
   const free: GFile[] = []
   const conflicts: Conflict[] = []
   for (const src of files) {
-    const name = F.getBasename(src)
-    const dest = F.getChild(destDir, name)
-    if (F.queryExists(dest, null)) conflicts.push({ src, name, dest })
+    const name = src.getBasename()
+    const dest = destDir.getChild(name)
+    if (dest.queryExists(null)) conflicts.push({ src, name, dest })
     else free.push(src)
   }
   return { free, conflicts }
