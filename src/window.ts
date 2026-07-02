@@ -11,7 +11,7 @@ import { fileForPath, fileForUri, ATTRS } from './core/gio.ts'
 import { HOME, locationName, isDirectory, displayName, tildePath } from './core/format.ts'
 import { recentFolders } from './services/recent-folders.ts'
 import { ClipboardService } from './services/clipboard-service.ts'
-import { FileOperations, uniqueChild } from './services/file-operations.ts'
+import { FileOperations } from './services/file-operations.ts'
 import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
@@ -29,7 +29,7 @@ import { columnChooserDialog } from './ui/column-chooser.ts'
 import { loadViewPrefs, saveViewPrefs } from './services/view-prefs.ts'
 import { QuickLook } from './ui/preview.ts'
 import { OperationsQueue } from './ui/operations-queue.ts'
-import { resolveConflicts, partitionConflicts } from './ui/conflict-dialog.ts'
+import { planTransfer } from './ui/conflict-dialog.ts'
 import { fileClipboardProvider } from './ui/dnd.ts'
 import { CommandPalette } from './ui/command-palette.ts'
 import type { PaletteItem } from './ui/command-palette.ts'
@@ -205,9 +205,16 @@ export class AppWindow {
 
   /* ---- File-operation feedback ---- */
   _wireFileOps(): void {
-    /* Long ops show per-op progress + cancel in the header operations queue. */
-    this.opsQueue.bind(this.fileOps, 'f', (id: number) => this.fileOps.cancel(id))
-    this.opsQueue.bind(this.archive, 'a')
+    /* Long ops show per-op progress + pause/resume + cancel in the operations queue. */
+    this.opsQueue.bind(this.fileOps, 'f', {
+      cancel: (id: number) => this.fileOps.cancel(id),
+      pause: (id: number) => this.fileOps.pause(id),
+      resume: (id: number) => this.fileOps.resume(id),
+    })
+    this.opsQueue.bind(this.archive, 'a', {
+      pause: (id: number) => this.archive.pause(id),
+      resume: (id: number) => this.archive.resume(id),
+    })
 
     /* Quick-op success toasts are shown by the window methods that record undo,
      * so they can attach an "Undo" button; the service's 'notify' is unused. */
@@ -373,20 +380,22 @@ export class AppWindow {
     if (!other?.location || !files.length) return
     const dest = other.location
     const plan = await this._resolvePlan(files, dest, move)
-    if (!plan || !plan.length) return
+    if (!plan || !plan.items.length) return
     if (move) {
       const origParent = files[0].getParent()
-      let dests = this.fileOps.moveItems(plan)
-      if (origParent) this.undo.push({
+      let dests = this.fileOps.moveItems(plan.items, plan.prune)
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else if (origParent) this.undo.push({
         undo: () => { dests = this.fileOps.move(dests, origParent) },
-        redo: () => { dests = this.fileOps.moveItems(plan) },
+        redo: () => { dests = this.fileOps.moveItems(plan.items, plan.prune) },
         undoLabel: 'Undo Move', redoLabel: 'Redo Move',
       })
     } else {
-      let dests = this.fileOps.copyItems(plan)
-      this.undo.push({
+      let dests = this.fileOps.copyItems(plan.items)
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else this.undo.push({
         undo: () => this.fileOps.trash(dests),
-        redo: () => { dests = this.fileOps.copyItems(plan) },
+        redo: () => { dests = this.fileOps.copyItems(plan.items) },
         undoLabel: 'Undo Copy', redoLabel: 'Redo Copy',
       })
     }
@@ -809,52 +818,33 @@ export class AppWindow {
     const incoming = files.filter(f => { const p = f.getParent(); return !p || p.getUri() !== destUri })
     if (!incoming.length) return
     const plan = await this._resolvePlan(incoming, dest, !!targetDir)
-    if (!plan || !plan.length) return
+    if (!plan || !plan.items.length) return
     if (targetDir) {
       const origParent = incoming[0].getParent()
-      let dests = this.fileOps.moveItems(plan)
-      if (origParent) this.undo.push({
+      let dests = this.fileOps.moveItems(plan.items, plan.prune)
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else if (origParent) this.undo.push({
         undo: () => { dests = this.fileOps.move(dests, origParent) },
-        redo: () => { dests = this.fileOps.moveItems(plan) },
+        redo: () => { dests = this.fileOps.moveItems(plan.items, plan.prune) },
         undoLabel: 'Undo Move', redoLabel: 'Redo Move',
       })
     } else {
-      let dests = this.fileOps.copyItems(plan)
-      this.undo.push({
+      let dests = this.fileOps.copyItems(plan.items)
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else this.undo.push({
         undo: () => this.fileOps.trash(dests),
-        redo: () => { dests = this.fileOps.copyItems(plan) },
+        redo: () => { dests = this.fileOps.copyItems(plan.items) },
         undoLabel: 'Undo Copy', redoLabel: 'Redo Copy',
       })
     }
   }
 
   /* Turn a set of sources + a destination into a runnable copy/move plan,
-   * prompting for any name collisions (Replace / Skip / Keep Both). Returns null
-   * if the user cancels the operation, or the (possibly empty) resolved plan.
-   * `move` distinguishes cut/move from copy so pasting an item into its own
-   * folder is handled sanely (see below) instead of prompting to overwrite it. */
-  async _resolvePlan(files: GFile[], destDir: GFile, move = false): Promise<CopyItem[] | null> {
-    const { free, conflicts } = partitionConflicts(files, destDir)
-    const items: CopyItem[] = free.map(src => ({ src, dest: destDir.getChild(src.getBasename()) }))
-    /* A collision where the destination *is* the source (pasting an item into
-     * its own folder) is never a real overwrite: copy → duplicate ("keep both"),
-     * move → no-op, so skip. Don't prompt. */
-    const real = conflicts.filter(c => {
-      if (!c.src.equal(c.dest)) return true
-      if (!move) items.push({ src: c.src, dest: uniqueChild(destDir, c.name) })
-      return false
-    })
-    if (real.length) {
-      const res = await resolveConflicts(this.window, real, destDir)
-      if (!res) return null
-      for (const c of real) {
-        const action = res.get(c.src)
-        if (action === 'skip') continue
-        if (action === 'replace') items.push({ src: c.src, dest: c.dest, replace: true })
-        else items.push({ src: c.src, dest: uniqueChild(destDir, c.name) })
-      }
-    }
-    return items
+   * prompting for name collisions and recursively merging directory-on-directory
+   * conflicts. Returns null if the user cancels, else { items, prune, merged } —
+   * see planTransfer. `move` distinguishes cut/move from copy. */
+  _resolvePlan(files: GFile[], destDir: GFile, move = false): Promise<{ items: CopyItem[]; prune: GFile[]; merged: boolean } | null> {
+    return planTransfer(this.window, files, destDir, move)
   }
 
   async _paste(): Promise<void> {
@@ -864,21 +854,23 @@ export class AppWindow {
     const files = this.clipboard.files.slice()
     const cut = this.clipboard.cut
     const plan = await this._resolvePlan(files, dest, cut)
-    if (!plan || !plan.length) return
+    if (!plan || !plan.items.length) return
     if (cut) {
       const origParent = files[0].getParent()
-      let dests = this.fileOps.moveItems(plan)
+      let dests = this.fileOps.moveItems(plan.items, plan.prune)
       this.clipboard.clear()
-      if (origParent) this.undo.push({
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else if (origParent) this.undo.push({
         undo: () => { dests = this.fileOps.move(dests, origParent) },
         redo: () => { dests = this.fileOps.move(dests, dest) },
         undoLabel: 'Undo Move', redoLabel: 'Redo Move',
       })
     } else {
-      let dests = this.fileOps.copyItems(plan)
-      this.undo.push({
+      let dests = this.fileOps.copyItems(plan.items)
+      if (plan.merged) this.toast('Merged folders can’t be undone')
+      else this.undo.push({
         undo: () => this.fileOps.trash(dests),
-        redo: () => { dests = this.fileOps.copyItems(plan) },
+        redo: () => { dests = this.fileOps.copyItems(plan.items) },
         undoLabel: 'Undo Copy', redoLabel: 'Redo Copy',
       })
     }
