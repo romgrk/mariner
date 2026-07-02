@@ -10,7 +10,7 @@ const FORMATS: Array<[label: string, format: ArchiveFormat]> = [
  * dialog. Resolves { name, format } or null on cancel. */
 export function compressDialog(parent: any, defaultBase: string): Promise<{ name: string; format: ArchiveFormat } | null> {
   return new Promise(resolve => {
-    const dialog = new Adw.AlertDialog('Create Archive', null)
+    const dialog = new Adw.AlertDialog({ heading: 'Create Archive' })
     const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 12 })
     const entry = new Gtk.Entry({ text: defaultBase, hexpand: true, activatesDefault: true })
     const format = new Gtk.DropDown({ model: Gtk.StringList.new(FORMATS.map(f => f[0])) })
