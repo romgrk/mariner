@@ -4,13 +4,32 @@ import { statSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AppWindow } from './window.ts'
-import { fileForPath } from './core/gio.ts'
+import { fileForPath, fileForUri } from './core/gio.ts'
 import { HOME } from './core/format.ts'
 import { loadStyles } from './ui/style.ts'
 import { ACCELS } from './accels.ts'
+import type { GFile } from './core/types.ts'
 
-/* Initial location: a folder path or file:// URI passed on the command line
- * (so Mariner can act as the default handler for inode/directory), else HOME.
+/* Command-line modes. Plain arguments open folders (so Mariner is the handler
+ * for inode/directory). `--select <uri…>` reveals items in their parent folder
+ * and `--properties <uri…>` additionally opens the Properties dialog — these
+ * back org.freedesktop.FileManager1.ShowItems / ShowItemProperties, driven by
+ * the D-Bus service (data/filemanager1.js). */
+type Mode = 'open' | 'select' | 'properties'
+
+function parseInvocation(): { mode: Mode; targets: string[] } {
+  const args = process.argv.slice(2)
+  if (args[0] === '--select') return { mode: 'select', targets: args.slice(1) }
+  if (args[0] === '--properties') return { mode: 'properties', targets: args.slice(1) }
+  return { mode: 'open', targets: args }
+}
+
+/* A CLI argument may be a path or a URI (file://, trash://, …). */
+function fileForArg(arg: string): GFile {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(arg) ? fileForUri(arg) : fileForPath(resolve(arg))
+}
+
+/* Initial location for `open` mode: a folder path or file:// URI, else HOME.
  * A file argument opens its parent directory. */
 function startPath(): string {
   const arg = process.argv[2]
@@ -32,7 +51,19 @@ app.on('activate', () => {
   loadStyles()
   for (const [action, accels] of Object.entries(ACCELS))
     app.setAccelsForAction(action, accels)
-  new AppWindow(app, fileForPath(startPath()))
+
+  const { mode, targets } = parseInvocation()
+  if (mode === 'open' || targets.length === 0) {
+    new AppWindow(app, fileForPath(startPath()))
+  } else {
+    const uris = targets.map(t => fileForArg(t).getUri())
+    /* Start at the first item's parent; revealItems groups the rest and opens
+     * further tabs for items living in other folders. */
+    const first = fileForUri(uris[0])
+    const win = new AppWindow(app, first.getParent() ?? first)
+    if (mode === 'properties') win.showItemProperties(uris)
+    else win.revealItems(uris)
+  }
   loop.run()
 })
 

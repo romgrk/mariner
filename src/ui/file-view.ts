@@ -86,6 +86,7 @@ export class FileView {
   _wantFocus = false
   _pinTop = false
   _restoreScroll = -1
+  _revealUris: Set<string> | null = null
   _pendingReset = false
   _spinnerTimer = 0
   _merge = false
@@ -329,6 +330,34 @@ export class FileView {
     if (this._wantFocus) { this._focusVisibleView(); this._wantFocus = false }
     if (this._pinTop) this._pinToTop()
     else if (this._restoreScroll >= 0) this._scrollTo(this._restoreScroll)
+    this._applyReveal()
+  }
+
+  /* Reveal-and-select: used when the view is opened to highlight specific items
+   * (org.freedesktop.FileManager1 ShowItems / "Show in folder"). The targets are
+   * matched by URI as the folder streams in, so items that arrive in a later
+   * batch still get selected. Suppresses the pin-to-top so the view scrolls to
+   * the revealed item instead. Cleared once the load settles (finishLoading). */
+  setPendingReveal(uris: string[]): void {
+    this._revealUris = uris.length ? new Set(uris) : null
+    if (this._revealUris) { this._pinTop = false; this._applyReveal() }
+  }
+
+  /* Re-assert the reveal selection against the current store: select every row
+   * whose URI is a target (the first match clears any prior selection, e.g. the
+   * default cursor on item 0), then scroll it into view. Idempotent — re-running
+   * on each incoming batch just re-selects the same items after sorted inserts
+   * shift their positions. */
+  _applyReveal(uris: Set<string> | null = this._revealUris): void {
+    if (!uris || this.stack.getVisibleChildName() !== 'results') return
+    const n = this.store.getNItems()
+    let first = -1
+    for (let i = 0; i < n; i++) {
+      if (!uris.has(this.store.getItem(i)._key)) continue
+      this.selection.selectItem(i, first < 0)
+      if (first < 0) first = i
+    }
+    if (first >= 0) this._scrollItemIntoView(first, Gtk.ListScrollFlags.FOCUS)
   }
 
   /* Scroll to the top and put the cursor on the first item (like nautilus when
@@ -376,13 +405,17 @@ export class FileView {
     this._settle()
     /* Re-assert the final position once more after the full model has been laid
      * out (the adjustment's range isn't final until then), then release the
-     * pins so later user scrolling sticks. */
-    const pinTop = this._pinTop, restore = this._restoreScroll
+     * pins so later user scrolling sticks. A pending reveal takes precedence:
+     * it re-selects and scrolls to its targets, overriding pin/restore, and is
+     * a one-shot — cleared here so a later refresh doesn't re-hijack selection. */
+    const pinTop = this._pinTop, restore = this._restoreScroll, reveal = this._revealUris
     this._pinTop = false
     this._restoreScroll = -1
-    if (this.store.getNItems() > 0 && (pinTop || restore >= 0)) {
+    this._revealUris = null
+    if (this.store.getNItems() > 0 && (pinTop || restore >= 0 || reveal)) {
       GLib.idleAdd(GLib.PRIORITY_DEFAULT_IDLE, () => {
-        if (pinTop) this._pinToTop()
+        if (reveal) this._applyReveal(reveal)
+        else if (pinTop) this._pinToTop()
         else this._scrollTo(restore)
         return false
       })

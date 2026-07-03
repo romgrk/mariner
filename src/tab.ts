@@ -41,6 +41,7 @@ export class Tab {
   get isSplit(): boolean { return this.panes.length > 1 }
 
   navigate(file: GFile, push = true): void { this.activePane.navigate(file, push) }
+  revealAfterLoad(uris: string[]): void { this.activePane.revealAfterLoad(uris) }
   back(): void { this.activePane.back() }
   forward(): void { this.activePane.forward() }
   up(): void { this.activePane.up() }

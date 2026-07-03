@@ -571,6 +571,39 @@ export class AppWindow {
 
   navigate(file: GFile): void { this.activeTab?.navigate(file) }
 
+  /* Open each item's parent folder and select the item within it — the window
+   * side of org.freedesktop.FileManager1.ShowItems ("Show in folder"). Items are
+   * grouped by parent so a set spanning several folders opens one tab each; the
+   * first group reuses the active tab (which main.ts already pointed at it). A
+   * URI with no parent (a filesystem root) is opened directly. */
+  revealItems(uris: string[]): void {
+    const groups = new Map<string, { parent: GFile; children: string[] }>()
+    for (const uri of uris) {
+      const parent = fileForUri(uri).getParent()
+      if (!parent) { this.navigate(fileForUri(uri)); continue }
+      const key = parent.getUri()
+      const g = groups.get(key) ?? { parent, children: [] }
+      g.children.push(uri)
+      groups.set(key, g)
+    }
+    let first = true
+    for (const { parent, children } of groups.values()) {
+      const tab = first ? this.activeTab! : this.openTab(parent)
+      if (first && tab.location?.getUri() !== parent.getUri()) tab.navigate(parent)
+      tab.revealAfterLoad(children)
+      first = false
+    }
+    this.window.present()
+  }
+
+  /* org.freedesktop.FileManager1.ShowItemProperties: reveal the items, then open
+   * the Properties dialog for each (matching Nautilus, which shows one window
+   * per item). */
+  showItemProperties(uris: string[]): void {
+    this.revealItems(uris)
+    for (const uri of uris) this._propertiesFor(fileForUri(uri))
+  }
+
   openPath(text: string): void {
     text = text.trim()
     if (!text) return

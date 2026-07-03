@@ -179,11 +179,18 @@ makepkg -si
 ```
 
 Mariner then appears in your application menu. To make it your default file
-manager:
+manager — both for opening folders *and* for "Show in folder" from browsers,
+download notifications and `gio open` (the `org.freedesktop.FileManager1`
+interface):
 
 ```sh
-xdg-mime default com.github.romgrk.mariner.desktop inode/directory
+mariner-set-default            # undo with: mariner-set-default --undo
 ```
+
+This sets the `inode/directory` MIME default and installs a per-user
+`org.freedesktop.FileManager1` service (no root, no conflict with an installed
+Nautilus). See [docs/default-file-manager.md](docs/default-file-manager.md) for
+what it does and how to set it up by hand.
 
 ### From source
 

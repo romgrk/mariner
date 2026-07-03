@@ -132,6 +132,11 @@ export class Pane {
     if (!isArchiveLocation(file)) recordFolderVisit(file.getUri())
   }
 
+  /* Select the given item URIs once the current folder finishes streaming in
+   * (org.freedesktop.FileManager1 ShowItems / "Show in folder"). Set right after
+   * a navigate() so the reveal is armed before the async batches arrive. */
+  revealAfterLoad(uris: string[]): void { this.view.setPendingReveal(uris) }
+
   back(): void { this._go(this.history.goBack(this.location)) }
   forward(): void { this._go(this.history.goForward(this.location)) }
   up(): void { const p = this.parent; if (p) this.navigate(p) }
