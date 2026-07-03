@@ -10,11 +10,13 @@ const SORT_KEYS: SortKey[] = ['name', 'size', 'type', 'modified']
 
 /* Preferences dialog (win.preferences), a thin editor over AppWindow.prefs. It
  * writes through the same paths the header/menu actions use so all surfaces stay
- * in sync. Adw.PreferencesDialog + rows, mirroring GNOME Files' preferences. */
+ * in sync. Adw.PreferencesDialog + rows, mirroring GNOME Files' preferences.
+ * Two titled pages — the dialog shows an Adw.ViewSwitcher in its header bar to
+ * flip between them. */
 export function preferencesDialog(parent: any, win: AppWindow): void {
   const dialog = new Adw.PreferencesDialog()
   dialog.setTitle('Preferences')
-  const page = new Adw.PreferencesPage()
+  const page = new Adw.PreferencesPage({ title: 'General', iconName: 'preferences-system-symbolic' })
 
   const viewGroup = new Adw.PreferencesGroup({ title: 'Views' })
   viewGroup.add(comboRow('Default View', ['Grid', 'List'], VIEW_MODES.indexOf(win.prefs.viewMode),
@@ -36,13 +38,15 @@ export function preferencesDialog(parent: any, win: AppWindow): void {
   }))
   page.add(sortGroup)
 
-  const sidebarGroup = new Adw.PreferencesGroup({ title: 'Sidebar' })
+  const sidebarPage = new Adw.PreferencesPage({ title: 'Sidebar', iconName: 'sidebar-show-symbolic' })
+  const sidebarGroup = new Adw.PreferencesGroup({ title: 'Visible Items' })
   for (const item of SIDEBAR_ITEMS)
     sidebarGroup.add(switchRow(item.label, !win.prefs.sidebarHidden.includes(item.id),
       v => win._setSidebarItemVisible(item.id, v)))
-  page.add(sidebarGroup)
+  sidebarPage.add(sidebarGroup)
 
   dialog.add(page)
+  dialog.add(sidebarPage)
   dialog.present(parent)
 }
 
