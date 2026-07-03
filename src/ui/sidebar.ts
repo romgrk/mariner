@@ -29,12 +29,16 @@ export interface Sidebar {
  * split by separators — nautilus draws these from its list_box_header_func, with
  * no text section headers.
  *
+ * `isHidden(id)` filters out user-hidden items/sections (Preferences → Sidebar);
+ * ids are the SIDEBAR_ITEMS ids. refresh() re-applies it after a change.
+ *
  * The separators are non-selectable separator rows rather than GtkListBoxRow
  * headers: node-gtk mis-marshals GtkListBox.setHeaderFunc/setHeader, and a
  * separator row is visually identical and keyboard-skipped. */
 export function createSidebar(
   onNavigate: (file: GFile) => void,
   onBookmarkMenu: (file: GFile, widget: any, x: number, y: number) => void = () => {},
+  isHidden: (id: string) => boolean = () => false,
 ): Sidebar {
   const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.SINGLE })
   list.addCssClass('navigation-sidebar')
@@ -113,10 +117,10 @@ export function createSidebar(
     while ((c = list.getFirstChild()) !== null) list.remove(c)
     rows = []
     prevSection = -1
-    for (const p of getPlaces()) addRow(p, SECTION_DEFAULT)
-    for (const p of getBookmarks()) addRow(p, SECTION_BOOKMARKS)
-    addRow(getComputer(), SECTION_COMPUTER)
-    for (const p of getDevices()) addRow(p, SECTION_MOUNTS)
+    for (const p of getPlaces()) if (!isHidden(p.id!)) addRow(p, SECTION_DEFAULT)
+    if (!isHidden('bookmarks')) for (const p of getBookmarks()) addRow(p, SECTION_BOOKMARKS)
+    if (!isHidden('computer')) addRow(getComputer(), SECTION_COMPUTER)
+    if (!isHidden('devices')) for (const p of getDevices()) addRow(p, SECTION_MOUNTS)
     applyActive()
   }
 

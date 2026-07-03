@@ -135,6 +135,7 @@ export class AppWindow {
     this.sidebar = createSidebar(
       (file: GFile) => this.navigate(file),
       (file: GFile, widget: any, x: number, y: number) => this.showBookmarkMenu(file, widget, x, y),
+      (id: string) => this.prefs.sidebarHidden.includes(id),
     )
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
@@ -557,6 +558,15 @@ export class AppWindow {
     this.toolbar.setViewIcon(mode)
     this.activeTab?.applyPrefs()
     saveViewPrefs(this.prefs)
+  }
+
+  /* Show/hide one sidebar item/section (Preferences → Sidebar). */
+  _setSidebarItemVisible(id: string, visible: boolean): void {
+    const hidden = this.prefs.sidebarHidden.filter(h => h !== id)
+    if (!visible) hidden.push(id)
+    this.prefs.sidebarHidden = hidden
+    saveViewPrefs(this.prefs)
+    this.sidebar.refresh()
   }
 
   /* Open the "Visible Columns" chooser. Switches to the list view first so the

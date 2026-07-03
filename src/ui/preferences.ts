@@ -1,6 +1,7 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import GLib from 'gi:GLib-2.0'
+import { SIDEBAR_ITEMS } from '../services/places-service.ts'
 import type { AppWindow } from '../window.ts'
 import type { SortKey, ViewMode } from '../core/types.ts'
 
@@ -34,6 +35,12 @@ export function preferencesDialog(parent: any, win: AppWindow): void {
     win.activeTab?.applyPrefs()
   }))
   page.add(sortGroup)
+
+  const sidebarGroup = new Adw.PreferencesGroup({ title: 'Sidebar' })
+  for (const item of SIDEBAR_ITEMS)
+    sidebarGroup.add(switchRow(item.label, !win.prefs.sidebarHidden.includes(item.id),
+      v => win._setSidebarItemVisible(item.id, v)))
+  page.add(sidebarGroup)
 
   dialog.add(page)
   dialog.present(parent)
