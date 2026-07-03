@@ -162,6 +162,13 @@
   --accent-color: oklab(from var(--accent-bg-color) var(--standalone-color-oklab));
 }
 
+/* Round the rubber-band selection rectangle's corners, like nautilus. The band
+ * inherits the neutral-grey --accent-bg-color above for its border/fill; this
+ * just softens its corners to match GNOME Files. */
+rubberband {
+  border-radius: 6px;
+}
+
 /* Dim hidden/backup files when they are shown. */
 .view .hidden-file {
   opacity: 0.55;
