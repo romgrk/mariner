@@ -61,7 +61,13 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, boo
       if (tags.overflow) {
         const sub = Gio.Menu.new()
         sub.appendItem(customMenuItem('tag-list'))
-        s.appendSubmenu('More Tags', sub)
+        /* Repeat the management entries inside the submenu, so everything
+         * tag-related is at hand from either level. */
+        const manage = Gio.Menu.new()
+        manage.append('New Tag…', 'win.tag-new')
+        if (tags.assigned) manage.append('Remove All Tags', 'win.tag-clear')
+        sub.appendSection(null, manage)
+        s.appendSubmenu('All Tags', sub)
       }
     } else {
       const sub = Gio.Menu.new()

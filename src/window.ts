@@ -588,8 +588,8 @@ export class AppWindow {
         for (const t of tagsService.visibleTags()) {
           const has = files.every(f => tagsService.tagsOf(f.getUri()).includes(t.name))
           items.push({
-            label: has ? `Untag: ${t.name}` : `Tag: ${t.name}`,
-            group: 'action', search: `tag untag ${t.name}`, icon: tagIconName(),
+            label: has ? `Remove tag ${t.name}` : `Add tag ${t.name}`,
+            group: 'action', search: `add remove tag ${t.name}`, icon: tagIconName(),
             run: () => this._toggleTag(files, t.name),
           })
         }
@@ -602,8 +602,8 @@ export class AppWindow {
     for (const t of tagsService.visibleTags()) {
       const count = tagCounts.get(t.name) ?? 0
       items.push({
-        label: t.name, detail: `${count} file${count === 1 ? '' : 's'}`, group: 'folder',
-        icon: tagIconName(), search: `tag ${t.name}`,
+        label: `Show tag ${t.name}`, detail: `${count} file${count === 1 ? '' : 's'}`, group: 'folder',
+        icon: tagIconName(), search: `show tag ${t.name}`,
         run: () => this.navigate(fileForUri(tagUri(t.name))),
       })
     }

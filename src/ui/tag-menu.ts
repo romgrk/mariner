@@ -66,6 +66,7 @@ export function buildTagDotsRow(files: GFile[], onToggle: (name: string) => void
   const add = new Gtk.Button({ iconName: 'list-add-symbolic', tooltipText: 'New Tag…' })
   add.addCssClass('flat')
   add.addCssClass('mariner-menu-dot')
+  add.addCssClass('dim-label')
   add.on('clicked', onNewTag)
   row.append(add)
   return row
