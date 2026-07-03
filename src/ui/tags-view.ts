@@ -118,6 +118,10 @@ export function createTagsView(): TagsView {
       unhide.on('clicked', () => tagsService.setTagHidden(tag.name, false))
       r.addSuffix(unhide)
     }
+    /* Rows navigate (to the tag's own listing) — say so with a chevron. */
+    const chevron = new Gtk.Image({ iconName: 'go-next-symbolic', valign: Gtk.Align.CENTER })
+    chevron.addCssClass('dim-label')
+    r.addSuffix(chevron)
     r.addSuffix(rowMenu(tag, count))
 
     /* Drop files on a row to tag them. */
