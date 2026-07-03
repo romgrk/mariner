@@ -582,7 +582,7 @@ export class AppWindow {
 
     /* Tag toggles for the selection (query-only, so the empty-query list stays
      * lean), plus remove-all when anything selected is tagged. */
-    if (target && !inTrash) {
+    if (target && !inTrash && tagsService.enabled) {
       const files = sel.map(s => s.file).filter(f => f.getUri().startsWith('file://'))
       if (files.length === sel.length && files.length > 0) {
         for (const t of tagsService.visibleTags()) {
@@ -659,8 +659,10 @@ export class AppWindow {
     act('Reset Zoom', 'zoom-reset', { icon: 'zoom-original-symbolic' })
     act('New Folder…', 'new-folder', { icon: 'folder-new-symbolic' })
     act('Create Link', 'create-link', { icon: 'insert-link-symbolic' })
-    act('All Tags', 'manage-tags', { icon: tagIconName() })
-    act('New Tag…', 'tag-new', { icon: tagIconName() })
+    if (tagsService.enabled) {
+      act('All Tags', 'manage-tags', { icon: tagIconName() })
+      act('New Tag…', 'tag-new', { icon: tagIconName() })
+    }
     act('Open in Terminal', 'open-terminal', { icon: 'utilities-terminal-symbolic' })
     act('Analyze Disk Usage', 'disk-usage', { icon: 'drive-harddisk-symbolic' })
     if (inTrash) act('Empty Trash', 'empty-trash', { icon: 'user-trash-full-symbolic' })
@@ -840,7 +842,8 @@ export class AppWindow {
       ? (isBookmarked(bmFile) ? 'remove' : 'add') : null
     /* Tags apply to the selection; only real (file://) items can carry them. */
     const sel = this._selected()
-    const taggable = !!target && !inTrash && sel.length > 0 && sel.every(s => s.file.getUri().startsWith('file://'))
+    const taggable = tagsService.enabled && !!target && !inTrash
+      && sel.length > 0 && sel.every(s => s.file.getUri().startsWith('file://'))
     let tags: TagMenuContext | null = null
     let customs: Array<{ id: string; build: (pop: any) => any }> | null = null
     if (taggable) {

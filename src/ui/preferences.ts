@@ -2,6 +2,7 @@ import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import GLib from 'gi:GLib-2.0'
 import { SIDEBAR_ITEMS } from '../services/places-service.ts'
+import { tagsService } from '../services/tags-service.ts'
 import type { AppWindow } from '../window.ts'
 import type { SortKey, ViewMode } from '../core/types.ts'
 
@@ -37,6 +38,19 @@ export function preferencesDialog(parent: any, win: AppWindow): void {
     win.activeTab?.applyPrefs()
   }))
   page.add(sortGroup)
+
+  /* Tags kill switch: hides tags from every UI surface (sidebar, cell dots,
+   * menus, search, palette); the tag data itself is kept. Stored in the tags
+   * database, so every window and Mariner process follows. */
+  const tagsGroup = new Adw.PreferencesGroup({ title: 'Tags' })
+  const tagsRow = new Adw.SwitchRow({
+    title: 'Enable Tags',
+    subtitle: 'Show tags in the sidebar, file views and menus',
+    active: tagsService.enabled,
+  })
+  tagsRow.on('notify::active', () => tagsService.setEnabled(tagsRow.getActive()))
+  tagsGroup.add(tagsRow)
+  page.add(tagsGroup)
 
   const sidebarPage = new Adw.PreferencesPage({ title: 'Sidebar', iconName: 'sidebar-show-symbolic' })
   const sidebarGroup = new Adw.PreferencesGroup({ title: 'Visible Items' })

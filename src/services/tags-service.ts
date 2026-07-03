@@ -105,6 +105,7 @@ function sameNames(a: string[], b: string[]): boolean {
 export class TagsService extends EventEmitter {
   _db: any = null
   _ready = false
+  _enabled = true
   _tags = new Map<string, Tag>()                  /* insertion order = sort order */
   _byUri = new Map<string, Assignment[]>()
   _monitor: any = null
@@ -177,6 +178,8 @@ export class TagsService extends EventEmitter {
       if (!arr) this._byUri.set(row.uri, arr = [])
       arr.push({ tag: row.tag, src: row.src === 'index' ? 'index' : 'xattr' })
     }
+    try { this._enabled = this._db.prepare('SELECT value FROM settings WHERE key = ?').get('tags-enabled')?.value !== '0' }
+    catch { this._enabled = true }
   }
 
   /* Other-process sync: WAL commits from another Mariner process touch the
@@ -207,11 +210,33 @@ export class TagsService extends EventEmitter {
 
   /* ---- registry ---- */
 
+  /* The kill switch (Preferences → Enable Tags): when off, the display-facing
+   * accessors return nothing so tags vanish from every UI surface; the data
+   * (registry, index, xattrs) is untouched and comes back on re-enable.
+   * Persisted in the settings table, so all windows/processes follow. */
+  get enabled(): boolean { this._ensure(); return this._enabled }
+
+  setEnabled(on: boolean): void {
+    this._ensure()
+    if (this._enabled === on) return
+    this._enabled = on
+    this.setSetting('tags-enabled', on ? '1' : '0')
+    this.emit('changed', null)
+  }
+
   tags(): Tag[] { this._ensure(); return [...this._tags.values()] }
   /* Tags that appear in the UI (sidebar, menus, dots, search) — everywhere
    * except the Hidden Tags page. */
-  visibleTags(): Tag[] { this._ensure(); return [...this._tags.values()].filter(t => !t.hidden) }
-  hiddenTags(): Tag[] { this._ensure(); return [...this._tags.values()].filter(t => t.hidden) }
+  visibleTags(): Tag[] {
+    this._ensure()
+    if (!this._enabled) return []
+    return [...this._tags.values()].filter(t => !t.hidden)
+  }
+  hiddenTags(): Tag[] {
+    this._ensure()
+    if (!this._enabled) return []
+    return [...this._tags.values()].filter(t => t.hidden)
+  }
   getTag(name: string): Tag | null { this._ensure(); return this._tags.get(name) ?? null }
 
   createTag(name: string, color: string | null): Tag | null {
@@ -327,6 +352,7 @@ export class TagsService extends EventEmitter {
    * tagsOf for logic (toggles, undo snapshots, xattr writes). */
   tagObjectsOf(uri: string): Tag[] {
     this._ensure()
+    if (!this._enabled) return []
     const out: Tag[] = []
     for (const e of this._byUri.get(uri) ?? []) {
       const t = this._tags.get(e.tag)

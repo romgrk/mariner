@@ -131,6 +131,7 @@ export function createSidebar(
    * empty tags live only on the Tags page. Files can be dropped on a tag row
    * to tag them. */
   function addTagRows(): void {
+    if (!tagsService.enabled) return
     enterSection(SECTION_TAGS)
     const expanded = tagsService.getSetting(TAGS_EXPANDED_KEY, '1') === '1'
 

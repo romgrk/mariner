@@ -34,13 +34,18 @@ export function createSearchFilterButton(onChange: (f: SearchFilter) => void): S
   grid.attach(label('Contents'), 0, 2, 1, 1); grid.attach(contents, 1, 2, 1, 1)
 
   /* Tag chips: toggle any subset; matches must carry ALL toggled tags (tag
-   * intersection). Rebuilt whenever the tag set changes. */
+   * intersection). Rebuilt whenever the tag set changes; the whole row hides
+   * when there is nothing to offer (no tags, or tags disabled). */
   const active = new Set<string>()
+  const tagsLabel = label('Tags')
   const chips = new Gtk.FlowBox({ selectionMode: Gtk.SelectionMode.NONE, maxChildrenPerLine: 3, columnSpacing: 4, rowSpacing: 4 })
   const rebuildChips = (): void => {
     let c
     while ((c = chips.getFirstChild()) !== null) chips.remove(c)
-    const names = new Set(tagsService.visibleTags().map(t => t.name))
+    const offered = tagsService.visibleTags()
+    tagsLabel.setVisible(offered.length > 0)
+    chips.setVisible(offered.length > 0)
+    const names = new Set(offered.map(t => t.name))
     /* Drop toggled tags that no longer exist (or went hidden); re-run the
      * search if that changed the effective filter. */
     let pruned = false
@@ -69,7 +74,7 @@ export function createSearchFilterButton(onChange: (f: SearchFilter) => void): S
   }
   rebuildChips()
   tagsService.on('changed', rebuildChips)
-  grid.attach(label('Tags'), 0, 3, 1, 1); grid.attach(chips, 1, 3, 1, 1)
+  grid.attach(tagsLabel, 0, 3, 1, 1); grid.attach(chips, 1, 3, 1, 1)
 
   const popover = new Gtk.Popover()
   popover.setChild(grid)
