@@ -5,14 +5,21 @@ import { EventEmitter } from '../core/emitter.ts'
 import { ProcessStream } from '../core/process-stream.ts'
 import { ATTRS, fileForPath } from '../core/gio.ts'
 import { modifiedUnix } from '../core/format.ts'
+import { tagsService } from './tags-service.ts'
 import type { Entry, GFile, GFileInfo, SearchFilter } from '../core/types.ts'
 
 const DOCUMENT_RE = /officedocument|opendocument|msword|pdf|rtf|ebook|epub/
 
-/* Whether a resolved entry passes the rich-search filter (category + date). */
-function matchesFilter(info: GFileInfo, filter: SearchFilter | null): boolean {
+/* Whether a resolved entry passes the rich-search filter (category + date +
+ * tag intersection). The caller heals the tag index from the entry's xattr
+ * first, so tagsOf sees files tagged outside Mariner too. */
+function matchesFilter(info: GFileInfo, file: GFile, filter: SearchFilter | null): boolean {
   if (!filter) return true
   if (filter.since && modifiedUnix(info) < filter.since) return false
+  if (filter.tags?.length) {
+    const have = tagsService.tagsOf(file.getUri())
+    if (!filter.tags.every(t => have.includes(t))) return false
+  }
   const ct = info.getContentType() || ''
   switch (filter.category) {
     case 'folder': return info.getFileType() === Gio.FileType.DIRECTORY
@@ -97,7 +104,8 @@ export class SearchService extends EventEmitter {
         if (token.isCancelled()) return
         let info
         try { info = file.queryInfoFinish(res) } catch { return }
-        if (matchesFilter(info, this.filter)) this._push({ info, file })
+        tagsService.heal(info, file)
+        if (matchesFilter(info, file, this.filter)) this._push({ info, file })
       })
   }
 

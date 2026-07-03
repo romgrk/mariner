@@ -1,9 +1,46 @@
 import Gtk from 'gi:Gtk-4.0'
 import Pango from 'gi:Pango-1.0'
 import { thumbnails } from '../services/thumbnail-service.ts'
+import { tagsService } from '../services/tags-service.ts'
 import { displayName } from '../core/format.ts'
 import type { ColumnDef } from '../core/columns.ts'
 import type { GFileInfo } from '../core/types.ts'
+
+/* Maximum colored dots drawn on a cell; further tags collapse into "+n". */
+const MAX_DOTS = 3
+
+/* Repopulate a cell's tag-dots box: one colored dot per (colored) tag, a "+n"
+ * overflow, and the full tag list as the tooltip. Text tags (no color) only
+ * count toward the overflow — a grey dot for them would read as noise. */
+function applyTagDots(dots: any, info: GFileInfo): void {
+  let c
+  while ((c = dots.getFirstChild()) !== null) dots.remove(c)
+  const file = info._file
+  const tags = file ? tagsService.tagObjectsOf(file.getUri()) : []
+  if (!tags.length) { dots.setVisible(false); return }
+  const colored = tags.filter(t => t.color).slice(0, MAX_DOTS)
+  for (const t of colored) {
+    const dot = new Gtk.Box({ valign: Gtk.Align.CENTER })
+    dot.addCssClass('mariner-tag-dot')
+    dot.addCssClass('tag-color-' + t.color)
+    dots.append(dot)
+  }
+  const extra = tags.length - colored.length
+  if (extra > 0) {
+    const more = new Gtk.Label({ label: colored.length ? `+${extra}` : `${extra} tag${extra > 1 ? 's' : ''}` })
+    more.addCssClass('mariner-tag-more')
+    more.addCssClass('dim-label')
+    dots.append(more)
+  }
+  dots.setTooltipText(tags.map(t => t.name).join(', '))
+  dots.setVisible(true)
+}
+
+function makeDotsBox(halign: any): any {
+  const dots = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 4, halign, valign: Gtk.Align.CENTER, visible: false })
+  dots.addCssClass('mariner-tag-dots')
+  return dots
+}
 
 /* Cell factories for the grid and list views. `ctx` provides the live icon size
  * and a hook to wire a right-click menu onto each cell. Factory/bind callbacks
@@ -59,6 +96,7 @@ export function gridFactory(ctx: CellContext): any {
       wrapMode: Pango.WrapMode.WORD_CHAR, lines: 2,
       justify: Gtk.Justification.CENTER, maxWidthChars: 14,
     }))
+    box.append(makeDotsBox(Gtk.Align.CENTER))
     item.setChild(box)
     ctx.attachMenu(box, item)
   })
@@ -66,11 +104,13 @@ export function gridFactory(ctx: CellContext): any {
     const info = item.getItem()
     const box = item.getChild()
     const image = box.getFirstChild()
+    const label = image.getNextSibling()
     image.setPixelSize(ctx.iconSize())
     const icon = info.getIcon()
     if (icon) image.setFromGicon(icon)
     else image.setFromIconName('text-x-generic')
-    box.getLastChild().setLabel(displayName(info))
+    label.setLabel(displayName(info))
+    applyTagDots(label.getNextSibling(), info)
     toggleHidden(box, info)
     applyCut(box, info, ctx)
     applyThumbnail(image, info)
@@ -87,6 +127,7 @@ export function nameCellFactory(ctx: CellContext): any {
     image.addCssClass('mariner-image')
     box.append(image)
     box.append(new Gtk.Label({ ellipsize: Pango.EllipsizeMode.END, xalign: 0 }))
+    box.append(makeDotsBox(Gtk.Align.START))
     item.setChild(box)
     ctx.attachMenu(box, item)
   })
@@ -94,9 +135,11 @@ export function nameCellFactory(ctx: CellContext): any {
     const info = item.getItem()
     const box = item.getChild()
     const image = box.getFirstChild()
+    const label = image.getNextSibling()
     const icon = info.getIcon()
     if (icon) image.setFromGicon(icon)
-    box.getLastChild().setLabel(displayName(info))
+    label.setLabel(displayName(info))
+    applyTagDots(label.getNextSibling(), info)
     toggleHidden(box, info)
     applyCut(box, info, ctx)
     applyThumbnail(image, info)
@@ -112,8 +155,9 @@ export function nameColumn(ctx: CellContext): any {
 
 /* A resizable text column driven by a registry ColumnDef (its label + pure
  * formatter). The FileView keeps its own ordered list of these to rebuild the
- * visible column set. */
-export function metaColumn(def: ColumnDef): any {
+ * visible column set. The factory is exported separately so refreshCells can
+ * rebind meta cells whose data lives outside the model (e.g. the Tags column). */
+export function metaFactory(def: ColumnDef): any {
   const factory = new Gtk.SignalListItemFactory()
   factory.on('setup', (item: any) => {
     const label = new Gtk.Label({ xalign: def.rightAlign ? 1 : 0, ellipsize: Pango.EllipsizeMode.END })
@@ -122,7 +166,12 @@ export function metaColumn(def: ColumnDef): any {
     item.setChild(label)
   })
   factory.on('bind', (item: any) => item.getChild().setLabel(def.format(item.getItem())))
-  const col = new Gtk.ColumnViewColumn({ title: def.label, factory })
+  return factory
+}
+
+export function metaColumn(def: ColumnDef): any {
+  const col = new Gtk.ColumnViewColumn({ title: def.label, factory: metaFactory(def) })
   col.setResizable(true)
+  col._def = def   /* JS prop survives on the wrapper; used by refreshCells */
   return col
 }

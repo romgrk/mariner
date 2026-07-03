@@ -19,6 +19,10 @@ import { loadWindowState, saveWindowState } from './services/window-state.ts'
 import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
+import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
+import { tagManagerDialog } from './ui/tag-manager.ts'
+import { tagColorIcon, tagIconName } from './ui/tag-icons.ts'
+import type { TagMenuItem } from './ui/context-menu.ts'
 import { createToolbar } from './ui/toolbar.ts'
 import { shortcutsDialog } from './ui/shortcuts.ts'
 import { preferencesDialog } from './ui/preferences.ts'
@@ -59,6 +63,7 @@ export class AppWindow {
   _pasteTarget: GFile | null = null
   _ctxFile: GFile | null = null
   _cutUris = new Set<string>()
+  _tagActionCount = 0
   _quicklook: QuickLook | null = null
   _palette: CommandPalette | null = null
   _actions: Record<string, any> = {}
@@ -135,6 +140,7 @@ export class AppWindow {
     this.sidebar = createSidebar(
       (file: GFile) => this.navigate(file),
       (file: GFile, widget: any, x: number, y: number) => this.showBookmarkMenu(file, widget, x, y),
+      () => this._manageTags(),
     )
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
@@ -235,6 +241,17 @@ export class AppWindow {
     /* Archive ops also flow through the queue (indeterminate); toast on finish. */
     this.archive.on('done', ({ title }: { title: string }) => this.toast(`${title} — done`))
     this.archive.on('error', ({ title, message }: OpError) => this.toast(`${title} failed: ${message}`))
+
+    /* Tag changes repaint every pane's cell dots and refresh any open tag://
+     * listing (the sidebar rebuilds itself — it subscribes in createSidebar). */
+    tagsService.on('changed', () => {
+      for (const tab of this.tabs) {
+        for (const p of tab.panes) {
+          p.view.refreshCells()
+          if (p.location && isTagUri(p.location.getUri())) p.reload()
+        }
+      }
+    })
   }
 
   /* ---- Actions ---- */
@@ -350,6 +367,59 @@ export class AppWindow {
     add('bookmark-open', () => { if (this._ctxFile) this.navigate(this._ctxFile) })
     add('bookmark-open-tab', () => { if (this._ctxFile) this.openTab(this._ctxFile) })
     add('remove-bookmark', () => this._removeBookmark(this._ctxFile))
+
+    /* Tags. Per-tag toggles are created fresh on each context-menu popup (the
+     * tag set is dynamic) — see _buildTagActions. */
+    add('manage-tags', () => this._manageTags())
+    add('tag-clear', () => this._removeAllTags())
+  }
+
+  /* ---- Tags ---- */
+  _manageTags(): void { tagManagerDialog(this.window, file => this.navigate(file)) }
+
+  /* Stateful boolean actions backing the Tags submenu's toggle items: checked
+   * when EVERY selected file carries the tag (so a mixed selection toggles ON
+   * first). Rebuilt per popup; stale actions from the previous popup removed. */
+  _buildTagActions(files: GFile[]): TagMenuItem[] {
+    const tags = tagsService.tags()
+    for (let i = 0; i < this._tagActionCount; i++) {
+      try { this.window.removeAction('tag-toggle-' + i) } catch {}
+      delete this._actions['tag-toggle-' + i]
+    }
+    this._tagActionCount = tags.length
+    return tags.map((t, i) => {
+      const name = 'tag-toggle-' + i
+      const state = files.length > 0 && files.every(f => tagsService.tagsOf(f.getUri()).includes(t.name))
+      const a = Gio.SimpleAction.newStateful(name, null, GLib.Variant.newBoolean(state))
+      a.on('change-state', () => this._toggleTag(files, t.name))
+      this.window.addAction(a)
+      this._actions[name] = a
+      return { label: t.name, action: 'win.' + name, icon: tagColorIcon(t.color) }
+    })
+  }
+
+  _toggleTag(files: GFile[], tag: string): void {
+    if (!files.length) return
+    const before = files.map(f => [f, tagsService.tagsOf(f.getUri())] as const)
+    tagsService.toggleTag(files, tag)
+    this.undo.push({
+      undo: () => before.forEach(([f, tags]) => tagsService.setTags(f, [...tags])),
+      redo: () => tagsService.toggleTag(files, tag),
+      undoLabel: 'Undo Tag Change', redoLabel: 'Redo Tag Change',
+    })
+  }
+
+  _removeAllTags(): void {
+    const files = this._selectedFiles().filter(f => tagsService.tagsOf(f.getUri()).length)
+    if (!files.length) return
+    const before = files.map(f => [f, tagsService.tagsOf(f.getUri())] as const)
+    tagsService.removeAllTags(files)
+    this.undo.push({
+      undo: () => before.forEach(([f, tags]) => tagsService.setTags(f, [...tags])),
+      redo: () => tagsService.removeAllTags(files),
+      undoLabel: 'Undo Remove Tags', redoLabel: 'Redo Remove Tags',
+    })
+    this.toast(`Removed tags from ${files.length} item${files.length > 1 ? 's' : ''}`, { label: 'Undo', name: 'win.undo' })
   }
 
   /* Analyze disk usage of the selected folder (or the current location): opens
@@ -475,6 +545,32 @@ export class AppWindow {
         items.push({ label: 'Add Bookmark', group: 'action', search: 'Add Bookmark', icon: 'bookmark-new-symbolic', primary: true, detail: accelHint('win.add-bookmark'), run: () => this._addBookmark(bmFile) })
     }
 
+    /* Tag toggles for the selection (query-only, so the empty-query list stays
+     * lean), plus remove-all when anything selected is tagged. */
+    if (target && !inTrash) {
+      const files = sel.map(s => s.file).filter(f => f.getUri().startsWith('file://'))
+      if (files.length === sel.length && files.length > 0) {
+        for (const t of tagsService.tags()) {
+          const has = files.every(f => tagsService.tagsOf(f.getUri()).includes(t.name))
+          items.push({
+            label: has ? `Untag: ${t.name}` : `Tag: ${t.name}`,
+            group: 'action', search: `tag untag ${t.name}`, icon: tagIconName(),
+            run: () => this._toggleTag(files, t.name),
+          })
+        }
+        if (files.some(f => tagsService.tagsOf(f.getUri()).length)) act('Remove All Tags', 'tag-clear', { icon: tagIconName() })
+      }
+    }
+
+    /* Jump to a tag's virtual location (query-only). */
+    for (const [name, count] of tagsService.counts()) {
+      items.push({
+        label: name, detail: `${count} file${count === 1 ? '' : 's'}`, group: 'folder',
+        icon: tagIconName(), search: `tag ${name}`,
+        run: () => this.navigate(fileForUri(tagUri(name))),
+      })
+    }
+
     /* Dual-pane targets (primary when split + selection). The search text carries
      * a "split pane" alias so a query for "split" surfaces them too. */
     if (tab?.isSplit && sel.length) {
@@ -526,6 +622,7 @@ export class AppWindow {
     act('Reset Zoom', 'zoom-reset', { icon: 'zoom-original-symbolic' })
     act('New Folder…', 'new-folder', { icon: 'folder-new-symbolic' })
     act('Create Link', 'create-link', { icon: 'insert-link-symbolic' })
+    act('Manage Tags…', 'manage-tags', { icon: tagIconName() })
     act('Open in Terminal', 'open-terminal', { icon: 'utilities-terminal-symbolic' })
     act('Analyze Disk Usage', 'disk-usage', { icon: 'drive-harddisk-symbolic' })
     if (inTrash) act('Empty Trash', 'empty-trash', { icon: 'user-trash-full-symbolic' })
@@ -694,7 +791,12 @@ export class AppWindow {
     this._ctxFile = bmFile
     const bookmark: 'add' | 'remove' | null = bmFile && bmFile.getUri().startsWith('file://')
       ? (isBookmarked(bmFile) ? 'remove' : 'add') : null
-    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark }), widget, x, y)
+    /* Tags apply to the selection; only real (file://) items can carry them. */
+    const sel = this._selected()
+    const taggable = !!target && !inTrash && sel.length > 0 && sel.every(s => s.file.getUri().startsWith('file://'))
+    const tagItems = taggable ? this._buildTagActions(sel.map(s => s.file)) : null
+    const tagsAssigned = taggable && sel.some(s => tagsService.tagsOf(s.file.getUri()).length > 0)
+    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark, tagItems, tagsAssigned }), widget, x, y)
   }
 
   /* Context menu for a drive/partition row in the Computer view. Its actions

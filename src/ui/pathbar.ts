@@ -6,6 +6,8 @@ import Pango from 'gi:Pango-1.0'
 import { HOME } from '../core/format.ts'
 import { archiveName } from '../core/archive-uri.ts'
 import { volumeMonitor } from '../services/volume-monitor.ts'
+import { tagFromUri } from '../services/tags-service.ts'
+import { tagIconName } from './tag-icons.ts'
 import type { GFile } from '../core/types.ts'
 
 /* Breadcrumb path bar — a faithful port of nautilus's NautilusPathBar
@@ -43,7 +45,7 @@ const DEFAULT_MOD_MASK =
 
 type BtnType =
   | 'normal' | 'root' | 'admin' | 'home' | 'starred' | 'recent'
-  | 'mount' | 'trash' | 'network' | 'computer' | 'burn' | 'archive'
+  | 'mount' | 'trash' | 'network' | 'computer' | 'burn' | 'archive' | 'tag'
 
 interface Crumb {
   type: BtnType
@@ -98,6 +100,14 @@ function classify(file: GFile): Crumb {
     return { type: 'recent', name: 'Recent', iconName: 'document-open-recent-symbolic', gicon: null, isRoot: true }
   if (scheme === 'starred')
     return { type: 'starred', name: 'Starred', iconName: 'starred-symbolic', gicon: null, isRoot: true }
+  /* Tag locations: the root crumb is "Tags"; a specific tag renders as a normal
+   * child crumb ("Tags / Pink") with its name decoded from the URI. */
+  if (scheme === 'tag') {
+    const tag = tagFromUri(file.getUri())
+    if (tag == null)
+      return { type: 'tag', name: 'Tags', iconName: tagIconName(), gicon: null, isRoot: true }
+    return { type: 'normal', name: tag, iconName: null, gicon: null, isRoot: false }
+  }
 
   const mount = mountForRoot(file)
   if (mount)

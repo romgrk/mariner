@@ -174,6 +174,56 @@ rubberband {
   opacity: 0.55;
 }
 
+/* ---- File tags ---- */
+/* Colored dots on cells (grid: centered under the name; list: after the name).
+ * Per-color background classes (.tag-color-<key>) are generated at runtime by
+ * style.ts from the palette in tags-service.ts. */
+.mariner-tag-dot {
+  min-width: 7px;
+  min-height: 7px;
+  border-radius: 4px;
+  background-color: alpha(currentColor, 0.4); /* text tags / unknown colors */
+}
+
+.mariner-tag-dots .mariner-tag-more {
+  font-size: 0.75em;
+}
+
+/* Sidebar tag rows: a slightly larger dot, indented under the Tags header. */
+.mariner-sidebar-tag-dot {
+  min-width: 9px;
+  min-height: 9px;
+  border-radius: 5px;
+}
+
+.mariner-sidebar-tag-count {
+  font-size: 0.85em;
+}
+
+/* Tag manager: color swatch buttons (in rows and in the new-tag palette). */
+.mariner-tag-swatch {
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 10px;
+  padding: 0;
+}
+.mariner-tag-swatch.no-color {
+  background: none;
+  border: 1px dashed alpha(currentColor, 0.5);
+}
+.mariner-tag-swatch.selected-swatch {
+  outline: 2px solid @accent_bg_color;
+  outline-offset: 1px;
+}
+
+/* Search-filter tag chips: toggle buttons shrunk to pill size. */
+.mariner-tag-chip {
+  min-height: 22px;
+  padding: 0 8px;
+  border-radius: 11px;
+  font-size: 0.85em;
+}
+
 /* ---- Dual-pane ---- */
 /* Mark the focused pane when split so it's clear which side actions target. */
 .active-pane {

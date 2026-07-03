@@ -16,6 +16,7 @@ export const ATTRS = [
   'owner::user', 'owner::group', 'unix::mode',
   'access::can-write', 'access::can-execute',
   'trash::orig-path', 'trash::deletion-date',
+  'xattr::xdg.tags',
 ].join(',')
 
 export function fileForPath(path: string): GFile { return Gio.File.newForPath(path) }

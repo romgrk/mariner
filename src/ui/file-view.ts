@@ -7,7 +7,8 @@ import { FILE_INFO_TYPE, uriOf } from '../core/gio.ts'
 import { displayName, isDirectory, formatBytes } from '../core/format.ts'
 import { makeComparator } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
-import { gridFactory, nameColumn, nameCellFactory, metaColumn } from './cells.ts'
+import { gridFactory, nameColumn, nameCellFactory, metaColumn, metaFactory } from './cells.ts'
+import { tagsService } from '../services/tags-service.ts'
 import type { CellContext } from './cells.ts'
 import { fuzzyMatch } from '../core/fuzzy-match.ts'
 import { COLUMN_DEF, TRASH_COLUMN, defaultColumnConfig } from '../core/columns.ts'
@@ -309,10 +310,13 @@ export class FileView {
   }
 
   /* Stash the GFile and a stable identity key on the info wrapper (both survive
-   * a round-trip through the GListStore). */
+   * a round-trip through the GListStore). Every entry entering a view passes
+   * through here, so it's also where the tag index heals itself against the
+   * entry's xattr (no-op for the untagged/unindexed common case). */
   _stamp(info: GFileInfo, file: GFile): void {
     info._file = file
     info._key = uriOf(file)
+    tagsService.heal(info, file)
   }
 
   addEntries(pairs: Entry[]): void {
@@ -562,11 +566,14 @@ export class FileView {
     this._scrollItemIntoView(i, Gtk.ListScrollFlags.FOCUS | Gtk.ListScrollFlags.SELECT)
   }
 
-  /* Re-run the cell factories to reflect state that isn't in the model (e.g. the
-   * cut/clipboard dimming). Rebinds visible cells; selection is preserved. */
+  /* Re-run the cell factories to reflect state that isn't in the model (e.g.
+   * cut/clipboard dimming, tag dots). Rebinds visible cells; selection is
+   * preserved. Meta columns are included for the Tags column, whose data lives
+   * in the tags service rather than the GFileInfo. */
   refreshCells(): void {
     this.gridView.setFactory(gridFactory(this._cellContext()))
     this.nameCol.setFactory(nameCellFactory(this._cellContext()))
+    for (const col of this._metaCols) col.setFactory(metaFactory(col._def))
   }
 
   /* ---- Floating status bar (selection summary) ----

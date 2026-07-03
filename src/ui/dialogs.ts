@@ -6,6 +6,7 @@ import {
 } from '../core/format.ts'
 import { measureUsage } from '../core/measure.ts'
 import { createUsageChart } from './disk-usage.ts'
+import { tagsService } from '../services/tags-service.ts'
 import type { GFile, GFileInfo } from '../core/types.ts'
 
 interface PromptOptions {
@@ -121,6 +122,8 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile, opts: 
   row('Location', parentDir ? parentDir.getPath() : '')
   row('Modified', formatModified(info))
   row('Permissions', permString(info))
+  const tagNames = tagsService.tagsOf(file.getUri())
+  if (tagNames.length) row('Tags', tagNames.join(', '))
 
   page.add(group)
 

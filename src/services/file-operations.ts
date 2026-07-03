@@ -1,6 +1,7 @@
 import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
 import { EventEmitter } from '../core/emitter.ts'
+import { tagsService } from './tags-service.ts'
 import type { CopyItem, GFile } from '../core/types.ts'
 
 const NONE = Gio.FileCopyFlags.NONE
@@ -261,6 +262,9 @@ class Job {
         this.push(this.deleteStep(src))
         this.push(this.copyStep(src, dest))
       }
+      /* Tags follow the move: the xattrs traveled with the files (rename(2) /
+       * g_file_copy); re-key the tag index to the new addresses. */
+      tagsService.rekeyPrefix(src.getUri(), dest.getUri())
     }
   }
 
@@ -328,7 +332,7 @@ export class FileOperations extends EventEmitter {
 
   deletePermanently(files: GFile[]): void {
     const job = new Job(`Deleting ${files.length} item${files.length > 1 ? 's' : ''}`, this)
-    for (const f of files) job.push(job.deleteStep(f))
+    for (const f of files) { job.push(job.deleteStep(f)); tagsService.dropPrefix(f.getUri()) }
     job.run()
   }
 
@@ -345,7 +349,10 @@ export class FileOperations extends EventEmitter {
   /* Quick, near-instant operations (run inline, report via 'notify'). */
   trash(files: GFile[]): boolean {
     const n = files.length
-    return this._quick('Move to Trash', () => files.forEach((f: GFile) => f.trash(null)),
+    /* Drop the tag-index rows for trashed trees: the trash URI is unpredictable,
+     * and the xattr stays on the trashed file, so a restore re-heals its tags
+     * on the next listing. */
+    return this._quick('Move to Trash', () => files.forEach((f: GFile) => { f.trash(null); tagsService.dropPrefix(f.getUri()) }),
       `Moved ${n} item${n > 1 ? 's' : ''} to Trash`)
   }
 
@@ -394,7 +401,10 @@ export class FileOperations extends EventEmitter {
   }
   rename(file: GFile, newName: string): GFile | null {
     let out: GFile | null = null
-    this._quick('Rename', () => { out = file.setDisplayName(newName, null) }, `Renamed to “${newName}”`)
+    this._quick('Rename', () => {
+      out = file.setDisplayName(newName, null)
+      if (out) tagsService.rekeyPrefix(file.getUri(), (out as GFile).getUri())
+    }, `Renamed to “${newName}”`)
     return out
   }
   link(files: GFile[], destDir: GFile): boolean {

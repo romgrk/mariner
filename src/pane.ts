@@ -4,6 +4,8 @@ import { createComputerView } from './ui/computer.ts'
 import type { ComputerView } from './ui/computer.ts'
 import { DirectoryService } from './services/directory-service.ts'
 import { SearchService } from './services/search-service.ts'
+import { TagLocationService } from './services/tag-location-service.ts'
+import { isTagUri } from './services/tags-service.ts'
 import { COMPUTER_URI } from './services/places-service.ts'
 import { History } from './core/navigation.ts'
 import { recordFolderVisit } from './services/recent-folders.ts'
@@ -23,6 +25,7 @@ export class Pane {
   paneStack: any
   dir: DirectoryService
   search: SearchService
+  tagLoc: TagLocationService
   history: History
   location: GFile | null = null
   searching = false
@@ -65,6 +68,7 @@ export class Pane {
 
     this.dir = new DirectoryService()
     this.search = new SearchService()
+    this.tagLoc = new TagLocationService()
     this.history = new History()
 
     this._wire()
@@ -74,6 +78,10 @@ export class Pane {
   get canGoBack(): boolean { return this.history.canGoBack }
   get canGoForward(): boolean { return this.history.canGoForward }
   get parent(): GFile | null {
+    /* A tag's parent is the all-tags root (GFile's generic URI parenting isn't
+     * reliable for the virtual scheme). */
+    const uri = this.location ? this.location.getUri() : ''
+    if (isTagUri(uri)) return uri.replace(/^tag:\/*/, '').length ? fileForUri('tag:///') : null
     const p = this.location.getParent()
     if (p) return p
     /* The Computer view sits above the filesystem root, so Up from "/" lands
@@ -85,7 +93,10 @@ export class Pane {
     if (archive) return archive.getParent()
     return null
   }
-  get searchActive(): boolean { return !!this.searchQuery || this.searchFilter.category !== 'all' || this.searchFilter.since > 0 }
+  get searchActive(): boolean {
+    return !!this.searchQuery || this.searchFilter.category !== 'all' || this.searchFilter.since > 0
+      || (this.searchFilter.tags?.length ?? 0) > 0
+  }
   get isShowingSearch(): boolean { return this.searching && this.searchActive }
 
   _wire(): void {
@@ -100,6 +111,10 @@ export class Pane {
     this.search.on('result', (batch: Entry[]) => this.view.addEntries(batch))
     this.search.on('end', () => { this.view.hideSearchProgress(); if (this.isShowingSearch) this.view.finishLoading('search') })
     this.search.on('error', (msg: string) => { this.view.hideSearchProgress(); this.view.showError(msg) })
+
+    this.tagLoc.on('loading', () => { this.view.configure(this._dirConfig()); this.view.beginLoading() })
+    this.tagLoc.on('items', (batch: Entry[]) => this.view.addEntries(batch))
+    this.tagLoc.on('ready', () => { if (this.isTagLocation) this.view.finishLoading('folder') })
   }
 
   _dirConfig(): ViewConfig {
@@ -117,6 +132,7 @@ export class Pane {
   /* ---- navigation ---- */
   get isComputer(): boolean { return !!this.location && this.location.getUri().startsWith('computer:') }
   get isTrash(): boolean { return !!this.location && this.location.getUri().startsWith('trash:') }
+  get isTagLocation(): boolean { return !!this.location && isTagUri(this.location.getUri()) }
 
   navigate(file: GFile, push = true): void {
     this._exitSearch()
@@ -128,9 +144,10 @@ export class Pane {
   }
 
   /* Archive:// mounts are transient (and their double-escaped URIs unsightly),
-   * so keep them out of the recent-folders / "jump to folder" history. */
+   * so keep them out of the recent-folders / "jump to folder" history. Tag
+   * locations too: they aren't folders, and a rename would strand the URI. */
   _recordVisit(file: GFile): void {
-    if (!isArchiveLocation(file)) recordFolderVisit(file.getUri())
+    if (!isArchiveLocation(file) && !isTagUri(file.getUri())) recordFolderVisit(file.getUri())
   }
 
   /* Select the given item URIs once the current folder finishes streaming in
@@ -143,6 +160,7 @@ export class Pane {
   up(): void { const p = this.parent; if (p) this.navigate(p) }
   reload(): void {
     if (this.isComputer) this.computer.refresh()
+    else if (this.isTagLocation) this.tagLoc.load(this.location)
     else this.isShowingSearch ? this._runSearch() : this.dir.load(this.location)
   }
 
@@ -155,13 +173,20 @@ export class Pane {
     this.onChanged()
   }
 
-  /* Show the location: the Computer interface for computer:///, otherwise load
-   * the directory into the file view. */
+  /* Show the location: the Computer interface for computer:///, a tag listing
+   * for tag://, otherwise load the directory into the file view. */
   _load(file: GFile): void {
-    if (file.getUri().startsWith('computer:')) {
+    const uri = file.getUri()
+    if (uri.startsWith('computer:')) {
       this.computer.refresh()
       this.paneStack.setVisibleChildName('computer')
+    } else if (isTagUri(uri)) {
+      this.dir.cancel()   /* stop the previous folder's monitor/enumeration */
+      this.paneStack.setVisibleChildName('files')
+      this.view.prepareForNavigation()
+      this.tagLoc.load(file)
     } else {
+      this.tagLoc.cancel()
       this.paneStack.setVisibleChildName('files')
       this.view.prepareForNavigation()
       this.dir.load(file)
@@ -238,5 +263,5 @@ export class Pane {
     this.view.setColumns(this.prefs.columns, this.isTrash)
   }
 
-  destroy(): void { this.dir.cancel(); this.search.cancel() }
+  destroy(): void { this.dir.cancel(); this.search.cancel(); this.tagLoc.cancel() }
 }

@@ -140,5 +140,11 @@ export function locationName(file: GFile): string {
   if (uri.startsWith('recent:')) return 'Recent'
   if (uri.startsWith('network:')) return 'Network'
   if (uri.startsWith('computer:')) return 'Computer'
+  /* tag:///<name> — title with the (decoded) tag name; the root is "Tags". */
+  if (uri.startsWith('tag:')) {
+    const m = /^tag:\/\/\/(.+)$/.exec(uri)
+    if (!m) return 'Tags'
+    try { return decodeURIComponent(m[1]) } catch { return m[1] }
+  }
   return file.getBasename() || uri
 }

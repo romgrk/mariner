@@ -16,6 +16,13 @@ export interface ColumnDef {
   rightAlign?: boolean
 }
 
+/* The Tags column reads live data through the TagsService, which injects its
+ * lookup here at import time (so core stays free of service imports). Until
+ * then, fall back to the entry's xattr snapshot. */
+let formatTags = (info: GFileInfo): string =>
+  String(info.getAttributeString?.('xattr::xdg.tags') || '').split(',').map(s => s.trim()).filter(Boolean).join(', ')
+export function setTagsColumnFormatter(fn: (info: GFileInfo) => string): void { formatTags = fn }
+
 export const COLUMN_DEFS: ColumnDef[] = [
   { id: 'size', label: 'Size', format: formatSize, rightAlign: true },
   { id: 'type', label: 'Type', format: formatType },
@@ -25,6 +32,7 @@ export const COLUMN_DEFS: ColumnDef[] = [
   { id: 'owner', label: 'Owner', format: formatOwner },
   { id: 'group', label: 'Group', format: formatGroup },
   { id: 'permissions', label: 'Permissions', format: formatPermissions },
+  { id: 'tags', label: 'Tags', format: info => formatTags(info) },
 ]
 
 export const COLUMN_DEF: Record<string, ColumnDef> =

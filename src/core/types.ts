@@ -32,6 +32,8 @@ export interface SearchFilter {
   /* When true (and a query is present), search file *contents* via ripgrep
    * instead of matching names. */
   contents?: boolean
+  /* Tag names a match must carry — ALL of them (tag intersection). */
+  tags?: string[]
 }
 
 /* One list-view column's state: which column (by id, see core/columns.ts) and
