@@ -195,6 +195,29 @@ rubberband {
   min-height: 9px;
   border-radius: 5px;
 }
+/* The "All Tags" row's dashed outline dot. */
+.mariner-sidebar-tag-dot.all-tags-dot {
+  background: none;
+  border: 1px dashed alpha(currentColor, 0.5);
+}
+
+/* ---- Tags overview page (tag:///) ---- */
+/* Per-tag section headers: accent-tinted bars (colors via the generated
+ * .tag-section-<key> classes; text tags keep this neutral fallback). */
+.mariner-tag-section {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background-color: color-mix(in srgb, currentColor 8%, transparent);
+}
+.mariner-tag-section .mariner-tag-section-name {
+  font-weight: bold;
+}
+.mariner-tag-files {
+  background: none;
+}
+.mariner-tag-files > row {
+  border-radius: 8px;
+}
 
 .mariner-sidebar-tag-count {
   font-size: 0.85em;

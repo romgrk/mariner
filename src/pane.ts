@@ -5,7 +5,9 @@ import type { ComputerView } from './ui/computer.ts'
 import { DirectoryService } from './services/directory-service.ts'
 import { SearchService } from './services/search-service.ts'
 import { TagLocationService } from './services/tag-location-service.ts'
-import { isTagUri } from './services/tags-service.ts'
+import { isTagUri, tagFromUri } from './services/tags-service.ts'
+import { createTagsView } from './ui/tags-view.ts'
+import type { TagsView } from './ui/tags-view.ts'
 import { COMPUTER_URI } from './services/places-service.ts'
 import { History } from './core/navigation.ts'
 import { recordFolderVisit } from './services/recent-folders.ts'
@@ -26,6 +28,7 @@ export class Pane {
   dir: DirectoryService
   search: SearchService
   tagLoc: TagLocationService
+  tagsView: TagsView
   history: History
   location: GFile | null = null
   searching = false
@@ -62,9 +65,21 @@ export class Pane {
     this.computer = createComputerView()
     this.computer.onActivate = file => this.navigate(file)
     this.computer.onContextMenu = (file, w, x, y) => this.onDriveContextMenu(file, w, x, y)
+
+    /* The Tags overview (tag:///) also lives in the stack. Activating a file
+     * there opens its folder with the file revealed. */
+    this.tagsView = createTagsView()
+    this.tagsView.onOpenEntry = file => {
+      const parent = file.getParent()
+      if (!parent) return
+      this.navigate(parent)
+      this.view.setPendingReveal([file.getUri()])
+    }
+
     this.paneStack = new Gtk.Stack()
     this.paneStack.addNamed(this.view.widget, 'files')
     this.paneStack.addNamed(this.computer.widget, 'computer')
+    this.paneStack.addNamed(this.tagsView.widget, 'tags')
 
     this.dir = new DirectoryService()
     this.search = new SearchService()
@@ -160,7 +175,10 @@ export class Pane {
   up(): void { const p = this.parent; if (p) this.navigate(p) }
   reload(): void {
     if (this.isComputer) this.computer.refresh()
-    else if (this.isTagLocation) this.tagLoc.load(this.location)
+    else if (this.isTagLocation) {
+      if (tagFromUri(this.location.getUri()) == null) this.tagsView.refresh()
+      else this.tagLoc.load(this.location)
+    }
     else this.isShowingSearch ? this._runSearch() : this.dir.load(this.location)
   }
 
@@ -182,9 +200,16 @@ export class Pane {
       this.paneStack.setVisibleChildName('computer')
     } else if (isTagUri(uri)) {
       this.dir.cancel()   /* stop the previous folder's monitor/enumeration */
-      this.paneStack.setVisibleChildName('files')
-      this.view.prepareForNavigation()
-      this.tagLoc.load(file)
+      if (tagFromUri(uri) == null) {
+        /* The root (tag:///) is the Tags overview page. */
+        this.tagLoc.cancel()
+        this.tagsView.refresh()
+        this.paneStack.setVisibleChildName('tags')
+      } else {
+        this.paneStack.setVisibleChildName('files')
+        this.view.prepareForNavigation()
+        this.tagLoc.load(file)
+      }
     } else {
       this.tagLoc.cancel()
       this.paneStack.setVisibleChildName('files')

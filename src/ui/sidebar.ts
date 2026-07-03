@@ -36,13 +36,16 @@ export interface Sidebar {
  * split by separators — nautilus draws these from its list_box_header_func, with
  * no text section headers.
  *
+ * `isHidden(id)` filters out user-hidden items/sections (Preferences → Sidebar);
+ * ids are the SIDEBAR_ITEMS ids. refresh() re-applies it after a change.
+ *
  * The separators are non-selectable separator rows rather than GtkListBoxRow
  * headers: node-gtk mis-marshals GtkListBox.setHeaderFunc/setHeader, and a
  * separator row is visually identical and keyboard-skipped. */
 export function createSidebar(
   onNavigate: (file: GFile) => void,
   onBookmarkMenu: (file: GFile, widget: any, x: number, y: number) => void = () => {},
-  onManageTags: () => void = () => {},
+  isHidden: (id: string) => boolean = () => false,
 ): Sidebar {
   const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.SINGLE })
   list.addCssClass('navigation-sidebar')
@@ -123,9 +126,11 @@ export function createSidebar(
   }
 
   /* The Tags group: a collapsible "Tags" header (chevron mirrors the state,
-   * persisted in the tags database), then one row per non-empty tag — colored
-   * dot, name, file count — and an "All Tags…" row opening the tag manager.
-   * Files can be dropped on a tag row to tag them. */
+   * persisted in the tags database), then one row per PINNED tag — colored dot,
+   * name, file count — and an "All Tags" row navigating to the tag:/// page.
+   * All tags are pinned by default; unpinning (Tags page → Edit Tags) removes a
+   * tag from here without deleting it. Files can be dropped on a tag row to tag
+   * them. */
   function addTagRows(): void {
     enterSection(SECTION_TAGS)
     const expanded = tagsService.getSetting(TAGS_EXPANDED_KEY, '1') === '1'
@@ -145,8 +150,8 @@ export function createSidebar(
 
     const counts = tagsService.counts()
     for (const tag of tagsService.tags()) {
+      if (!tag.pinned) continue
       const count = counts.get(tag.name) ?? 0
-      if (count === 0) continue
       const row = new Gtk.ListBoxRow({ focusOnClick: false })
       const file = fileForUri(tagUri(tag.name))
       row._file = file
@@ -170,14 +175,19 @@ export function createSidebar(
       rows.push({ row, uri: file.getUri() })
     }
 
-    const all = new Gtk.ListBoxRow({ focusOnClick: false, selectable: false })
+    /* "All Tags" is a real location (tag:///) — the Tags overview page. */
+    const all = new Gtk.ListBoxRow({ focusOnClick: false })
+    const allFile = fileForUri('tag:///')
+    all._file = allFile
     const ab = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, marginStart: 10 })
-    const allLabel = new Gtk.Label({ label: 'All Tags…', xalign: 0, hexpand: true })
-    allLabel.addCssClass('dim-label')
-    ab.append(allLabel)
+    const dot = new Gtk.Box({ valign: Gtk.Align.CENTER, marginEnd: 10 })
+    dot.addCssClass('mariner-sidebar-tag-dot')
+    dot.addCssClass('all-tags-dot')
+    ab.append(dot)
+    ab.append(new Gtk.Label({ label: 'All Tags', xalign: 0, hexpand: true }))
     all.setChild(ab)
-    all._activate = onManageTags
     list.append(all)
+    rows.push({ row: all, uri: allFile.getUri() })
   }
 
   function build(): void {
@@ -185,11 +195,11 @@ export function createSidebar(
     while ((c = list.getFirstChild()) !== null) list.remove(c)
     rows = []
     prevSection = -1
-    for (const p of getPlaces()) addRow(p, SECTION_DEFAULT)
-    for (const p of getBookmarks()) addRow(p, SECTION_BOOKMARKS)
-    addTagRows()
-    addRow(getComputer(), SECTION_COMPUTER)
-    for (const p of getDevices()) addRow(p, SECTION_MOUNTS)
+    for (const p of getPlaces()) if (!isHidden(p.id!)) addRow(p, SECTION_DEFAULT)
+    if (!isHidden('bookmarks')) for (const p of getBookmarks()) addRow(p, SECTION_BOOKMARKS)
+    if (!isHidden('tags')) addTagRows()
+    if (!isHidden('computer')) addRow(getComputer(), SECTION_COMPUTER)
+    if (!isHidden('devices')) for (const p of getDevices()) addRow(p, SECTION_MOUNTS)
     applyActive()
   }
 

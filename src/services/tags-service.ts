@@ -44,22 +44,24 @@ export interface Tag {
 
 interface Assignment { tag: string; src: 'xattr' | 'index' }
 
-/* The nine palette colors from the GNOME proposal. Hex values live here (the
- * single source); style.ts generates the .tag-color-<key> CSS classes and menu
- * dot icons are drawn from the same map. */
-export const TAG_COLORS: Array<{ key: string; label: string; hex: string }> = [
-  { key: 'blue', label: 'Blue', hex: '#3584e4' },
-  { key: 'teal', label: 'Teal', hex: '#2190a4' },
-  { key: 'green', label: 'Green', hex: '#26a269' },
-  { key: 'yellow', label: 'Yellow', hex: '#e5a50a' },
-  { key: 'orange', label: 'Orange', hex: '#ff7800' },
-  { key: 'red', label: 'Red', hex: '#e01b24' },
-  { key: 'pink', label: 'Pink', hex: '#d56199' },
-  { key: 'purple', label: 'Purple', hex: '#9141ac' },
-  { key: 'slate', label: 'Slate', hex: '#6f8396' },
+/* The nine tag colors: libadwaita's system accent palette, referenced through
+ * its CSS variables (--accent-blue …) so they adapt to the light/dark style.
+ * The hex values are the light-style standalone colors — used as the CSS
+ * fallback on older GTK and for the menu-item dot icons (SVG can't read GTK
+ * variables). style.ts generates the .tag-color-<key> classes from this map. */
+export const TAG_COLORS: Array<{ key: string; label: string; cssVar: string; hex: string }> = [
+  { key: 'blue', label: 'Blue', cssVar: '--accent-blue', hex: '#3584e4' },
+  { key: 'teal', label: 'Teal', cssVar: '--accent-teal', hex: '#2190a4' },
+  { key: 'green', label: 'Green', cssVar: '--accent-green', hex: '#3a944a' },
+  { key: 'yellow', label: 'Yellow', cssVar: '--accent-yellow', hex: '#c88800' },
+  { key: 'orange', label: 'Orange', cssVar: '--accent-orange', hex: '#ed5b00' },
+  { key: 'red', label: 'Red', cssVar: '--accent-red', hex: '#e62d42' },
+  { key: 'pink', label: 'Pink', cssVar: '--accent-pink', hex: '#d56199' },
+  { key: 'purple', label: 'Purple', cssVar: '--accent-purple', hex: '#9141ac' },
+  { key: 'slate', label: 'Slate', cssVar: '--accent-slate', hex: '#6f8396' },
 ]
 
-export const TAG_COLOR: Record<string, { key: string; label: string; hex: string }> =
+export const TAG_COLOR: Record<string, { key: string; label: string; cssVar: string; hex: string }> =
   Object.fromEntries(TAG_COLORS.map(c => [c.key, c]))
 
 const DIR = GLib.getUserDataDir() + '/mariner'
@@ -236,6 +238,16 @@ export class TagsService extends EventEmitter {
     if (!tag) return
     tag.color = color && TAG_COLOR[color] ? color : null
     this._sql('UPDATE tags SET color = ? WHERE name = ?', tag.color, name)
+    this.emit('changed', null)
+  }
+
+  /* Pinned tags appear in the sidebar (all tags are pinned by default). */
+  setTagPinned(name: string, pinned: boolean): void {
+    this._ensure()
+    const tag = this._tags.get(name)
+    if (!tag || tag.pinned === pinned) return
+    tag.pinned = pinned
+    this._sql('UPDATE tags SET pinned = ? WHERE name = ?', pinned ? 1 : 0, name)
     this.emit('changed', null)
   }
 

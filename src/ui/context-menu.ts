@@ -51,7 +51,7 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, boo
     }
     if (tagItems.length) sub.appendSection(null, toggles)
     const manage = Gio.Menu.new()
-    manage.append('New Tag…', 'win.manage-tags')
+    manage.append('New Tag…', 'win.tag-new')
     if (tagsAssigned) manage.append('Remove All Tags', 'win.tag-clear')
     sub.appendSection(null, manage)
     const s = Gio.Menu.new()

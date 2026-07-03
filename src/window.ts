@@ -20,7 +20,7 @@ import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from '
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
-import { tagManagerDialog } from './ui/tag-manager.ts'
+import { newTagDialog } from './ui/new-tag-dialog.ts'
 import { tagColorIcon, tagIconName } from './ui/tag-icons.ts'
 import type { TagMenuItem } from './ui/context-menu.ts'
 import { createToolbar } from './ui/toolbar.ts'
@@ -140,7 +140,7 @@ export class AppWindow {
     this.sidebar = createSidebar(
       (file: GFile) => this.navigate(file),
       (file: GFile, widget: any, x: number, y: number) => this.showBookmarkMenu(file, widget, x, y),
-      () => this._manageTags(),
+      (id: string) => this.prefs.sidebarHidden.includes(id),
     )
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
@@ -371,11 +371,33 @@ export class AppWindow {
     /* Tags. Per-tag toggles are created fresh on each context-menu popup (the
      * tag set is dynamic) — see _buildTagActions. */
     add('manage-tags', () => this._manageTags())
+    add('tag-new', () => this._newTag())
     add('tag-clear', () => this._removeAllTags())
   }
 
   /* ---- Tags ---- */
-  _manageTags(): void { tagManagerDialog(this.window, file => this.navigate(file)) }
+  /* The Tags overview is a location (tag:///), not a dialog. */
+  _manageTags(): void { this.navigate(fileForUri('tag:///')) }
+
+  /* New Tag dialog; when invoked with a selection (the context menu's
+   * "New Tag…"), the created tag is applied to it right away. */
+  async _newTag(): Promise<void> {
+    const files = this._selectedFiles().filter(f => f.getUri().startsWith('file://'))
+    const tag = await newTagDialog(this.window)
+    if (!tag) return
+    if (files.length) {
+      const before = files.map(f => [f, tagsService.tagsOf(f.getUri())] as const)
+      tagsService.addTag(files, tag.name)
+      this.undo.push({
+        undo: () => before.forEach(([f, tags]) => tagsService.setTags(f, [...tags])),
+        redo: () => tagsService.addTag(files, tag.name),
+        undoLabel: 'Undo Tag Change', redoLabel: 'Redo Tag Change',
+      })
+      this.toast(`Created “${tag.name}” and tagged ${files.length} item${files.length > 1 ? 's' : ''}`, { label: 'Undo', name: 'win.undo' })
+    } else {
+      this.toast(`Created tag “${tag.name}”`)
+    }
+  }
 
   /* Stateful boolean actions backing the Tags submenu's toggle items: checked
    * when EVERY selected file carries the tag (so a mixed selection toggles ON
@@ -622,7 +644,8 @@ export class AppWindow {
     act('Reset Zoom', 'zoom-reset', { icon: 'zoom-original-symbolic' })
     act('New Folder…', 'new-folder', { icon: 'folder-new-symbolic' })
     act('Create Link', 'create-link', { icon: 'insert-link-symbolic' })
-    act('Manage Tags…', 'manage-tags', { icon: tagIconName() })
+    act('All Tags', 'manage-tags', { icon: tagIconName() })
+    act('New Tag…', 'tag-new', { icon: tagIconName() })
     act('Open in Terminal', 'open-terminal', { icon: 'utilities-terminal-symbolic' })
     act('Analyze Disk Usage', 'disk-usage', { icon: 'drive-harddisk-symbolic' })
     if (inTrash) act('Empty Trash', 'empty-trash', { icon: 'user-trash-full-symbolic' })
@@ -654,6 +677,15 @@ export class AppWindow {
     this.toolbar.setViewIcon(mode)
     this.activeTab?.applyPrefs()
     saveViewPrefs(this.prefs)
+  }
+
+  /* Show/hide one sidebar item/section (Preferences → Sidebar). */
+  _setSidebarItemVisible(id: string, visible: boolean): void {
+    const hidden = this.prefs.sidebarHidden.filter(h => h !== id)
+    if (!visible) hidden.push(id)
+    this.prefs.sidebarHidden = hidden
+    saveViewPrefs(this.prefs)
+    this.sidebar.refresh()
   }
 
   /* Open the "Visible Columns" chooser. Switches to the list view first so the

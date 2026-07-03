@@ -11,8 +11,11 @@ export interface Entry {
   file: GFile
 }
 
-/* A sidebar location. */
+/* A sidebar location. Fixed places carry the id of their show/hide toggle
+ * (see SIDEBAR_ITEMS in places-service.ts); dynamic ones (bookmarks, devices)
+ * have none — their whole section is toggled instead. */
 export interface Place {
+  id?: string
   label: string
   icon: string
   file: GFile
@@ -53,6 +56,8 @@ export interface Prefs {
   iconSize: number
   /* Ordered list-view columns (excluding the always-first Name column). */
   columns: ColumnConfig[]
+  /* Ids of sidebar items/sections the user hid (see SIDEBAR_ITEMS). */
+  sidebarHidden: string[]
 }
 
 /* What the FileView needs to filter + order a dataset. */

@@ -17,23 +17,38 @@ const SPECIAL: Array<[any, string, string]> = [
   [GLib.UserDirectory.DIRECTORY_VIDEOS, 'Videos', 'folder-videos-symbolic'],
 ]
 
+/* Every show/hide-able sidebar entry, in sidebar order: the fixed places
+ * individually, plus the dynamic groups (Bookmarks, Devices) toggled as whole
+ * sections. Drives the Preferences dialog's Sidebar group and the validation
+ * of the persisted hidden-list (view-prefs.ts). */
+export const SIDEBAR_ITEMS: Array<{ id: string; label: string }> = [
+  { id: 'recent', label: 'Recent' },
+  { id: 'home', label: 'Home' },
+  ...SPECIAL.map(([, label]) => ({ id: label.toLowerCase(), label })),
+  { id: 'trash', label: 'Trash' },
+  { id: 'bookmarks', label: 'Bookmarks' },
+  { id: 'tags', label: 'Tags' },
+  { id: 'computer', label: 'Computer' },
+  { id: 'devices', label: 'Devices' },
+]
+
 export function getPlaces(): Place[] {
   const places: Place[] = [
-    { label: 'Recent', icon: 'document-open-recent-symbolic', file: fileForUri('recent:///') },
-    { label: 'Home', icon: 'user-home-symbolic', file: fileForPath(HOME) },
+    { id: 'recent', label: 'Recent', icon: 'document-open-recent-symbolic', file: fileForUri('recent:///') },
+    { id: 'home', label: 'Home', icon: 'user-home-symbolic', file: fileForPath(HOME) },
   ]
   for (const [id, label, icon] of SPECIAL) {
     const path = GLib.getUserSpecialDir(id)
     if (path && path !== HOME && GLib.fileTest(path, GLib.FileTest.IS_DIR))
-      places.push({ label, icon, file: fileForPath(path) })
+      places.push({ id: label.toLowerCase(), label, icon, file: fileForPath(path) })
   }
-  places.push({ label: 'Trash', icon: 'user-trash-symbolic', file: fileForUri('trash:///') })
+  places.push({ id: 'trash', label: 'Trash', icon: 'user-trash-symbolic', file: fileForUri('trash:///') })
   return places
 }
 
 /* The Computer entry — its own sidebar section (see the sidebar's build()). */
 export function getComputer(): Place {
-  return { label: 'Computer', icon: 'computer-symbolic', file: fileForUri(COMPUTER_URI) }
+  return { id: 'computer', label: 'Computer', icon: 'computer-symbolic', file: fileForUri(COMPUTER_URI) }
 }
 
 /* GTK stores user bookmarks as one "URI [ custom label]" line per bookmark;
