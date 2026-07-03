@@ -1,2 +1,2 @@
 overrides:
-  node-gtk: link:../../worktrees/node-gtk-lazy
+  node-gtk: link:../node-gtk

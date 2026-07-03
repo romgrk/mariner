@@ -5,13 +5,21 @@
   "type": "module",
   "description": "Mariner — a GNOME Files clone built with node-gtk + TypeScript",
   "license": "GPL-3.0-or-later",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/romgrk/mariner.git"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
   "main": "src/main.ts",
   "bin": {
     "mariner": "bin/mariner.js"
   },
   "files": [
     "bin",
-    "src"
+    "src",
+    "data"
   ],
   "scripts": {
     "start": "node --import node-gtk/register src/main.ts",

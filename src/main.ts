@@ -10,6 +10,14 @@ import { loadStyles } from './ui/style.ts'
 import { ACCELS } from './accels.ts'
 import type { GFile } from './core/types.ts'
 
+/* Desktop-integration commands run and exit before the GApplication is created,
+ * so they never activate a running instance. */
+const command = process.argv[2]
+if (command === '--install-desktop-entry' || command === '--uninstall-desktop-entry') {
+  const entry = await import('./cli/desktop-entry.ts')
+  process.exit(command === '--install-desktop-entry' ? entry.install() : entry.uninstall())
+}
+
 /* Command-line modes. Plain arguments open folders (so Mariner is the handler
  * for inode/directory). `--select <uri…>` reveals items in their parent folder
  * and `--properties <uri…>` additionally opens the Properties dialog — these
