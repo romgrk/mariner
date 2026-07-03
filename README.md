@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="data/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg" alt="Mariner icon" width="96">
+</p>
+
 <h1 align="center">
   Mariner
 </h1>

@@ -1,53 +1,34 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="128" height="128" viewBox="0 0 128 128" xmlns="http://www.w3.org/2000/svg">
   <defs>
-    <!-- GNOME standard palette blues (Blue 2 -> Blue 4) -->
-    <linearGradient id="face" x1="64" y1="16" x2="64" y2="108" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#62a0ea"/>
-      <stop offset="1" stop-color="#2f77dd"/>
+    <!-- paper catches light top-to-bottom (GNOME Light 1 -> Light 3) -->
+    <linearGradient id="hull" x1="64" y1="74" x2="64" y2="102" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#d5d3cf"/>
     </linearGradient>
+    <clipPath id="sea">
+      <rect x="8" y="88" width="112" height="32" rx="14"/>
+    </clipPath>
   </defs>
 
-  <!-- saturated dark-blue outline around the whole silhouette (GNOME edge definition) -->
-  <rect x="18.5" y="14.5" width="91" height="99" rx="15.5" fill="#174a90"/>
-  <!-- front profile (the ~4px "thickness" of the plate, darker; per GNOME "top and front") -->
-  <rect x="20" y="16" width="88" height="96" rx="14" fill="#1a5fb4"/>
-  <!-- front face -->
-  <rect x="20" y="16" width="88" height="92" rx="14" fill="url(#face)"/>
+  <!-- sea: GNOME Blue 4 base with a Blue 2 swell behind the boat -->
+  <rect x="8" y="88" width="112" height="32" rx="14" fill="#1c71d8"/>
+  <path clip-path="url(#sea)" d="M8 100 Q22 92 36 100 T64 100 T92 100 T120 100 V88 H8 Z" fill="#62a0ea"/>
 
-  <!-- compass rose, axis-aligned so it reads as a navigation instrument (not a browser needle) -->
-  <g transform="translate(64 62)">
-    <!-- secondary points (NE, SE, SW, NW), drawn first so the primaries sit on top -->
-    <g fill="#c3d4ef">
-      <g transform="rotate(45)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(135)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(225)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(315)"><path d="M0 -21 L6.5 0 L0 0 Z"/></g>
-    </g>
-    <g fill="#ffffff">
-      <g transform="rotate(45)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(135)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(225)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
-      <g transform="rotate(315)"><path d="M0 -21 L-6.5 0 L0 0 Z"/></g>
-    </g>
+  <!-- paper boat: paper = files, boat = mariner. Shaded left fold, lit right fold. -->
+  <path d="M64 18 L92 74 H36 Z" fill="#deddda"/>
+  <path d="M64 18 L92 74 H64 Z" fill="#ffffff"/>
+  <path d="M64 18 L92 74 H36 Z" fill="none" stroke="#174a90" stroke-width="3" stroke-linejoin="round"/>
 
-    <!-- primary points (N, E, S, W): shadow half then light half give the classic dimensional look -->
-    <g fill="#c3d4ef">
-      <g transform="rotate(0)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
-      <g transform="rotate(90)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
-      <g transform="rotate(180)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
-      <g transform="rotate(270)"><path d="M0 -37 L9 0 L0 0 Z"/></g>
-    </g>
-    <g fill="#ffffff">
-      <g transform="rotate(0)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
-      <g transform="rotate(90)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
-      <g transform="rotate(180)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
-      <g transform="rotate(270)"><path d="M0 -37 L-9 0 L0 0 Z"/></g>
-    </g>
+  <path d="M14 74 H114 L93 102 H35 Z" fill="url(#hull)"/>
+  <path d="M14 74 H114 L93 102 H35 Z" fill="none" stroke="#174a90" stroke-width="3" stroke-linejoin="round"/>
 
-    <!-- hub -->
-    <circle r="6.5" fill="#ffffff"/>
-    <circle r="3.2" fill="#1c71d8"/>
-    <circle r="1.1" fill="#ffffff"/>
-  </g>
+  <!-- compass-star emblem on the hull, continuity with the previous compass-rose icon -->
+  <path d="M64 77 L66.4 83.6 L73 86 L66.4 88.4 L64 95 L61.6 88.4 L55 86 L61.6 83.6 Z" fill="#3584e4"/>
+
+  <!-- bow wave in front of the hull -->
+  <path clip-path="url(#sea)" d="M8 106 Q22 99 36 106 T64 106 T92 106 T120 106 V120 H8 Z" fill="#1c71d8"/>
+
+  <!-- saturated dark-blue outline around the sea block (GNOME edge definition) -->
+  <rect x="8" y="88" width="112" height="32" rx="14" fill="none" stroke="#174a90" stroke-width="3"/>
 </svg>
