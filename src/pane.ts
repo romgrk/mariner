@@ -97,7 +97,7 @@ export class Pane {
     this.dir.on('invalidated', () => { if (!this.isShowingSearch) this.dir.load(this.location) })
 
     this.search.on('start', () => { this.view.configure(this._searchConfig()); this.view.beginLoading(); this.view.showSearchProgress() })
-    this.search.on('result', (pair: Entry) => this.view.addEntries([pair]))
+    this.search.on('result', (batch: Entry[]) => this.view.addEntries(batch))
     this.search.on('end', () => { this.view.hideSearchProgress(); if (this.isShowingSearch) this.view.finishLoading('search') })
     this.search.on('error', (msg: string) => { this.view.hideSearchProgress(); this.view.showError(msg) })
   }

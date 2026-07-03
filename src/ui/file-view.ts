@@ -209,6 +209,7 @@ export class FileView {
   }
 
   _mergeEntries(pairs: Entry[]): void {
+    const toInsert: GFileInfo[] = []
     for (const { info, file } of pairs) {
       this._stamp(info, file)
       this._incoming!.push({ info, file })
@@ -216,9 +217,10 @@ export class FileView {
       this._seen!.add(info._key)
       /* Already displayed → keep its widget (and selection); don't re-insert. */
       if (this._storeKeys!.has(info._key)) continue
-      this._insertSorted(info)
+      toInsert.push(info)
       this._storeKeys!.add(info._key)
     }
+    this._bulkInsertSorted(toInsert)
     if (this._loading && this.store.getNItems() > 0) {
       this._cancelSpinner()
       this.stack.setVisibleChildName('results')
@@ -305,11 +307,13 @@ export class FileView {
   addEntries(pairs: Entry[]): void {
     if (this._merge) { this._mergeEntries(pairs); return }
     this._resetIfPending()
+    const toInsert: GFileInfo[] = []
     for (const { info, file } of pairs) {
       this._stamp(info, file)
       this.all.push({ info, file })
-      if (this.filter(info)) this._insertSorted(info)
+      if (this.filter(info)) toInsert.push(info)
     }
+    this._bulkInsertSorted(toInsert)
     if (this._loading && this.store.getNItems() > 0) {
       this._cancelSpinner()
       this.stack.setVisibleChildName('results')
@@ -509,14 +513,46 @@ export class FileView {
     else this.stack.setVisibleChildName(this._emptyKind === 'search' ? 'empty-search' : 'empty-folder')
   }
 
-  _insertSorted(info: GFileInfo): void {
-    let lo = 0, hi = this.store.getNItems()
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1
-      if (this.cmp(this.store.getItem(mid), info) <= 0) lo = mid + 1
-      else hi = mid
-    }
-    this.store.insert(lo, info)
+  /* Merge a batch of already-filtered, not-yet-present infos into the sorted
+   * store and apply it as a SINGLE splice that replaces the whole model, rather
+   * than one insert per item. A GtkListView only re-realizes its visible rows on
+   * items-changed, so one bulk replace costs ~the same whether it adds 1 row or
+   * 10 000; but a per-item insert pays the selection-model + grid + column
+   * items-changed cost once per row — which is what froze the UI for seconds
+   * when a large search streamed thousands of scattered matches at once. Sorted
+   * results are scattered across the list, so run-coalescing insert doesn't
+   * help; replacing the model wholesale does. Selection is preserved by key. */
+  _bulkInsertSorted(infos: GFileInfo[]): void {
+    if (infos.length === 0) return
+    infos.sort(this.cmp)
+    const n = this.store.getNItems()
+    const cur: GFileInfo[] = new Array(n)
+    for (let k = 0; k < n; k++) cur[k] = this.store.getItem(k)
+    /* Merge the two sorted runs (existing rows keep their order; a new row lands
+     * after existing rows it ties with, matching the old per-item insert). */
+    const merged: GFileInfo[] = new Array(n + infos.length)
+    let a = 0, b = 0, m = 0
+    while (a < n && b < infos.length) merged[m++] = this.cmp(cur[a], infos[b]) <= 0 ? cur[a++] : infos[b++]
+    while (a < n) merged[m++] = cur[a++]
+    while (b < infos.length) merged[m++] = infos[b++]
+    const selected = this._selectedKeys()
+    this.store.splice(0, n, merged)
+    if (selected) this._reselectKeys(selected)
+  }
+
+  /* Keys of the currently-selected rows (null when the selection is empty, so
+   * the common streaming case pays nothing). */
+  _selectedKeys(): Set<string> | null {
+    if (Number(this.selection.getSelection().getSize()) === 0) return null
+    const keys = new Set<string>()
+    const n = this.store.getNItems()
+    for (let i = 0; i < n; i++) if (this.selection.isSelected(i)) keys.add(this.store.getItem(i)._key)
+    return keys
+  }
+
+  _reselectKeys(keys: Set<string>): void {
+    const n = this.store.getNItems()
+    for (let i = 0; i < n; i++) if (keys.has(this.store.getItem(i)._key)) this.selection.selectItem(i, false)
   }
 
   _activate(pos: number): void {
