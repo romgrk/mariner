@@ -21,8 +21,9 @@ import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
 import { newTagDialog } from './ui/new-tag-dialog.ts'
-import { tagColorIcon, tagIconName } from './ui/tag-icons.ts'
-import type { TagMenuItem } from './ui/context-menu.ts'
+import { tagIconName } from './ui/tag-icons.ts'
+import { customMenuSupported, buildTagDotsRow, buildTagListRows, TAG_DOTS_FIT } from './ui/tag-menu.ts'
+import type { TagMenuItem, TagMenuContext } from './ui/context-menu.ts'
 import { createToolbar } from './ui/toolbar.ts'
 import { shortcutsDialog } from './ui/shortcuts.ts'
 import { preferencesDialog } from './ui/preferences.ts'
@@ -64,6 +65,8 @@ export class AppWindow {
   _ctxFile: GFile | null = null
   _cutUris = new Set<string>()
   _tagActionCount = 0
+  _ctxPopover: any = null
+  _pendingTagsChanged = false
   _quicklook: QuickLook | null = null
   _palette: CommandPalette | null = null
   _actions: Record<string, any> = {}
@@ -243,15 +246,24 @@ export class AppWindow {
     this.archive.on('error', ({ title, message }: OpError) => this.toast(`${title} failed: ${message}`))
 
     /* Tag changes repaint every pane's cell dots and refresh any open tag://
-     * listing (the sidebar rebuilds itself — it subscribes in createSidebar). */
+     * listing (the sidebar rebuilds itself — it subscribes in createSidebar).
+     * Deferred while a context popover is open: refreshCells re-creates the
+     * cell widgets, and the popover is parented to one of them — rebuilding
+     * under it would tear the menu down mid-use (the inline tag dots toggle
+     * without closing it). Flushed when the popover closes. */
     tagsService.on('changed', () => {
-      for (const tab of this.tabs) {
-        for (const p of tab.panes) {
-          p.view.refreshCells()
-          if (p.location && isTagUri(p.location.getUri())) p.reload()
-        }
-      }
+      if (this._ctxPopover) { this._pendingTagsChanged = true; return }
+      this._applyTagsChanged()
     })
+  }
+
+  _applyTagsChanged(): void {
+    for (const tab of this.tabs) {
+      for (const p of tab.panes) {
+        p.view.refreshCells()
+        if (p.location && isTagUri(p.location.getUri())) p.reload()
+      }
+    }
   }
 
   /* ---- Actions ---- */
@@ -399,9 +411,10 @@ export class AppWindow {
     }
   }
 
-  /* Stateful boolean actions backing the Tags submenu's toggle items: checked
-   * when EVERY selected file carries the tag (so a mixed selection toggles ON
-   * first). Rebuilt per popup; stale actions from the previous popup removed. */
+  /* Fallback (no custom menu widgets): stateful boolean actions backing plain
+   * toggle items — checked when EVERY selected file carries the tag (so a
+   * mixed selection toggles ON first). Rebuilt per popup; stale actions from
+   * the previous popup removed. */
   _buildTagActions(files: GFile[]): TagMenuItem[] {
     const tags = tagsService.visibleTags()
     for (let i = 0; i < this._tagActionCount; i++) {
@@ -416,7 +429,7 @@ export class AppWindow {
       a.on('change-state', () => this._toggleTag(files, t.name))
       this.window.addAction(a)
       this._actions[name] = a
-      return { label: t.name, action: 'win.' + name, icon: tagColorIcon(t.color) }
+      return { label: t.name, action: 'win.' + name }
     })
   }
 
@@ -828,9 +841,21 @@ export class AppWindow {
     /* Tags apply to the selection; only real (file://) items can carry them. */
     const sel = this._selected()
     const taggable = !!target && !inTrash && sel.length > 0 && sel.every(s => s.file.getUri().startsWith('file://'))
-    const tagItems = taggable ? this._buildTagActions(sel.map(s => s.file)) : null
-    const tagsAssigned = taggable && sel.some(s => tagsService.tagsOf(s.file.getUri()).length > 0)
-    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark, tagItems, tagsAssigned }), widget, x, y)
+    let tags: TagMenuContext | null = null
+    let customs: Array<{ id: string; build: (pop: any) => any }> | null = null
+    if (taggable) {
+      const files = sel.map(s => s.file)
+      const assigned = sel.some(s => tagsService.tagsOf(s.file.getUri()).length > 0)
+      if (customMenuSupported()) {
+        tags = { custom: true, overflow: tagsService.visibleTags().length > TAG_DOTS_FIT, assigned, items: [] }
+        const onToggle = (name: string): void => this._toggleTag(files, name)
+        customs = [{ id: 'tag-dots', build: (pop: any) => buildTagDotsRow(files, onToggle, () => { pop.popdown(); this._activate('tag-new') }) }]
+        if (tags.overflow) customs.push({ id: 'tag-list', build: () => buildTagListRows(files, onToggle) })
+      } else {
+        tags = { custom: false, overflow: false, assigned, items: this._buildTagActions(files) }
+      }
+    }
+    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark, tags }), widget, x, y, customs)
   }
 
   /* Context menu for a drive/partition row in the Computer view. Its actions
@@ -864,19 +889,29 @@ export class AppWindow {
     this._popupMenu(menu, widget, x, y)
   }
 
-  _popupMenu(menu: any, widget: any, x: number, y: number): void {
+  _popupMenu(menu: any, widget: any, x: number, y: number, customs: Array<{ id: string; build: (pop: any) => any }> | null = null): void {
     const pop = Gtk.PopoverMenu.newFromModel(menu)
     pop.setParent(widget)
     pop.setHasArrow(false)
+    /* Fill the model's custom-widget placeholders (the tags dot row / list).
+     * Ids without a matching placeholder are simply skipped by addChild. */
+    for (const c of customs ?? []) {
+      try { pop.addChild(c.build(pop), c.id) } catch { /* menu still usable without the widget */ }
+    }
     try {
       const r = new Gdk.Rectangle()
       r.x = Math.round(x); r.y = Math.round(y); r.width = 1; r.height = 1
       pop.setPointingTo(r)
     } catch {}
+    this._ctxPopover = pop
     /* Defer unparent: GtkPopoverMenu activates the chosen item's action *after*
      * it closes, so detaching synchronously here would strand the action group
      * and the action would never fire. */
-    pop.on('closed', () => GLib.timeoutAdd(GLib.PRIORITY_DEFAULT_IDLE, 100, () => { try { pop.unparent() } catch {} return false }))
+    pop.on('closed', () => {
+      this._ctxPopover = null
+      if (this._pendingTagsChanged) { this._pendingTagsChanged = false; this._applyTagsChanged() }
+      GLib.timeoutAdd(GLib.PRIORITY_DEFAULT_IDLE, 100, () => { try { pop.unparent() } catch {} return false })
+    })
     pop.popup()
   }
 

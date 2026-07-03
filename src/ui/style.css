@@ -220,6 +220,20 @@ rubberband {
   padding: 8px 7px;
 }
 
+/* Context menu: the inline tag-dots row and the "More Tags" submenu rows. */
+.mariner-menu-dot-row {
+  padding: 2px 6px;
+}
+.mariner-menu-dot {
+  padding: 3px;
+  min-width: 0;
+  min-height: 0;
+}
+.mariner-menu-tag-row {
+  padding: 4px 10px;
+  border-radius: 6px;
+}
+
 /* Search-filter tag chips: toggle buttons shrunk to pill size. */
 .mariner-tag-chip {
   min-height: 22px;

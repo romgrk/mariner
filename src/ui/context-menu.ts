@@ -1,14 +1,26 @@
 import Gio from 'gi:Gio-2.0'
 import { displayName, isDirectory } from '../core/format.ts'
 import { isArchive } from '../services/archive-service.ts'
+import { customMenuItem } from './tag-menu.ts'
 import type { Entry } from '../core/types.ts'
 
-/* One toggle entry in the Tags submenu: the tag's name, its (window-scoped,
- * stateful) toggle action, and a colored-dot GIcon for palette tags. */
+/* One toggle entry in the fallback Tags submenu: the tag's name and its
+ * (window-scoped, stateful) toggle action. */
 export interface TagMenuItem {
   label: string
   action: string
-  icon?: any
+}
+
+/* The Tags section's inputs. When `custom` is set the model carries custom-
+ * widget placeholders (the inline dots row, and — with `overflow` — a "More
+ * Tags" submenu list); the window fills them via PopoverMenu.addChild. `items`
+ * is the plain stateful-toggle fallback for when node-gtk can't do that. */
+export interface TagMenuContext {
+  custom: boolean
+  overflow: boolean
+  /* Whether any selected file carries tags (enables "Remove All Tags"). */
+  assigned: boolean
+  items: TagMenuItem[]
 }
 
 export interface MenuContext {
@@ -19,18 +31,16 @@ export interface MenuContext {
   /* Whether the targeted folder can be bookmarked, and in which direction: 'add'
    * when it isn't yet bookmarked, 'remove' when it is, null when N/A. */
   bookmark: 'add' | 'remove' | null
-  /* Tag toggles for the selection (null hides the Tags submenu — trash,
-   * background, virtual schemes). */
-  tagItems: TagMenuItem[] | null
-  /* Whether any selected file carries tags (enables "Remove All Tags"). */
-  tagsAssigned: boolean
+  /* Tags for the selection (null hides the Tags section — trash, background,
+   * virtual schemes). */
+  tags: TagMenuContext | null
 }
 
 /* Builds the file-view context-menu model (nautilus-like sections), varying by
  * whether an item is targeted, whether we're in Trash, clipboard state, and
  * whether the tab is split (dual-pane copy/move targets). Pure — the window
  * owns popover creation/positioning and the paste target. */
-export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, bookmark, tagItems, tagsAssigned }: MenuContext): any {
+export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, bookmark, tags }: MenuContext): any {
   const menu = Gio.Menu.new()
   const section = (...items: Array<[string, string]>) => {
     const s = Gio.Menu.new()
@@ -38,24 +48,32 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, boo
     menu.appendSection(null, s)
   }
 
-  /* "Tags ▸": stateful toggles per tag (colored dot + check), then the manager
-   * entry and — when anything is tagged — the destructive remove-all. */
+  /* The Tags section. Custom mode: an inline dots row (toggling stays open;
+   * its "+" opens the New Tag dialog) and, when not every tag fits inline, a
+   * "More Tags" submenu with the full dot+name list. Fallback mode: a "Tags"
+   * submenu of plain stateful toggles. Either way, "Remove All Tags" appears
+   * when the selection carries tags. */
   const tagsSection = (): void => {
-    if (!tagItems) return
-    const sub = Gio.Menu.new()
-    const toggles = Gio.Menu.new()
-    for (const t of tagItems) {
-      const item = Gio.MenuItem.new(t.label, t.action)
-      if (t.icon) { try { item.setIcon(t.icon) } catch { /* icon is cosmetic */ } }
-      toggles.appendItem(item)
-    }
-    if (tagItems.length) sub.appendSection(null, toggles)
-    const manage = Gio.Menu.new()
-    manage.append('New Tag…', 'win.tag-new')
-    if (tagsAssigned) manage.append('Remove All Tags', 'win.tag-clear')
-    sub.appendSection(null, manage)
+    if (!tags) return
     const s = Gio.Menu.new()
-    s.appendSubmenu('Tags', sub)
+    if (tags.custom) {
+      s.appendItem(customMenuItem('tag-dots'))
+      if (tags.overflow) {
+        const sub = Gio.Menu.new()
+        sub.appendItem(customMenuItem('tag-list'))
+        s.appendSubmenu('More Tags', sub)
+      }
+    } else {
+      const sub = Gio.Menu.new()
+      const toggles = Gio.Menu.new()
+      for (const t of tags.items) toggles.append(t.label, t.action)
+      if (tags.items.length) sub.appendSection(null, toggles)
+      const manage = Gio.Menu.new()
+      manage.append('New Tag…', 'win.tag-new')
+      sub.appendSection(null, manage)
+      s.appendSubmenu('Tags', sub)
+    }
+    if (tags.assigned) s.append('Remove All Tags', 'win.tag-clear')
     menu.appendSection(null, s)
   }
   const bookmarkItem = (): [string, string] => bookmark === 'add'
