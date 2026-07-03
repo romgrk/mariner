@@ -260,3 +260,15 @@
 .computer-tile-usage {
   font-size: 0.9em;
 }
+
+/* Operations queue: briefly flash the header button when an operation finishes
+ * (a port of nautilus' "needs-attention"). A neutral currentColor highlight keeps
+ * with Mariner's desaturated look and adapts to light/dark. */
+@keyframes op-finished-flash {
+  0% { }
+  10% { background-color: color-mix(in srgb, currentColor 22%, transparent); }
+  100% { }
+}
+menubutton.op-flash > button {
+  animation: op-finished-flash 2s ease-in-out;
+}
