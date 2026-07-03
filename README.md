@@ -1,10 +1,10 @@
-<p align="center">
-  <img src="data/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg" alt="Mariner icon" width="96">
-</p>
-
-<h1 align="center">
-  Mariner
-</h1>
+<div align="center">
+  <img src="data/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg" alt="Mariner icon" width="96" />
+ 
+  <h1 align="center">
+    Mariner
+  </h1>
+</div>
 
 <p align="center">
   <b>GNOME Files, plus everything the issue tracker rejected.</b>
@@ -88,7 +88,7 @@ the top, so what you want is usually the first hit.
 ### Full-text search
 
 Search a whole folder tree, with matches appearing as they're found. Turn on
-**Contents** to search *inside* files with [ripgrep](https://github.com/BurntSushi/ripgrep) —
+**Contents** to search _inside_ files with [ripgrep](https://github.com/BurntSushi/ripgrep) —
 fast, with nothing to index first. Narrow results by type (images, documents,
 music, video…) or by date.
 
@@ -160,8 +160,8 @@ Nautilus doesn't (or does differently):
 - **Operations queue** — each running copy/move/archive shown separately, with its
   own progress and cancel button.
 - **Batch rename** — find-and-replace or numbered patterns, with live preview.
-- **Extract & compress** — extract zip, tar.*, 7z and rar; compress to zip,
-  tar.*, or 7z, straight from the right-click menu.
+- **Extract & compress** — extract zip, tar._, 7z and rar; compress to zip,
+  tar._, or 7z, straight from the right-click menu.
 - **Reset zoom** — `Ctrl+0` snaps grid icons back to the default size.
 - **Set as wallpaper**, **Open in Terminal**, **Create Link**, **Restore from
   Trash** — one click from the context menu.
@@ -177,8 +177,8 @@ list columns — works just like GNOME Files.
 Mariner is young, and a few things GNOME Files does haven't landed yet:
 
 - **Network & remote locations** — no SMB/Windows shares, SFTP/SSH, FTP, WebDAV,
-  or NFS; no MTP phones or cloud accounts; and no *Connect to Server* or *Other
-  Locations* browser. Mariner sees only local disks and already-mounted volumes.
+  or NFS; no MTP phones or cloud accounts; and no _Connect to Server_ or _Other
+  Locations_ browser. Mariner sees only local disks and already-mounted volumes.
 - **Editing bookmarks** — your existing GNOME Files bookmarks show up in the
   sidebar, but adding, removing, or reordering them from inside Mariner isn't
   wired up yet.
@@ -205,7 +205,7 @@ makepkg -si
 ```
 
 Mariner then appears in your application menu. To make it your default file
-manager — both for opening folders *and* for "Show in folder" from browsers,
+manager — both for opening folders _and_ for "Show in folder" from browsers,
 download notifications and `gio open` (the `org.freedesktop.FileManager1`
 interface):
 
@@ -263,16 +263,16 @@ npm start -- ~/Documents     # from source
 Press **Ctrl+?** at any time for the full keyboard-shortcuts window. A few worth
 knowing up front:
 
-| Shortcut | Action |
-| --- | --- |
-| **Ctrl+P** | Command palette |
-| **Ctrl+F** | Search (add **Contents** filter for full-text) |
-| **Space** | Quick Look preview |
-| **F3** | Toggle split view |
-| **F6** / **Alt+W** | Focus the other pane |
-| **Ctrl+L** | Type a path |
-| **Ctrl+1** / **Ctrl+2** | List / grid view |
-| **F2** | Rename (batch rename with a multi-selection) |
+| Shortcut                | Action                                         |
+| ----------------------- | ---------------------------------------------- |
+| **Ctrl+P**              | Command palette                                |
+| **Ctrl+F**              | Search (add **Contents** filter for full-text) |
+| **Space**               | Quick Look preview                             |
+| **F3**                  | Toggle split view                              |
+| **F6** / **Alt+W**      | Focus the other pane                           |
+| **Ctrl+L**              | Type a path                                    |
+| **Ctrl+1** / **Ctrl+2** | List / grid view                               |
+| **F2**                  | Rename (batch rename with a multi-selection)   |
 
 ### Configuring custom actions
 
@@ -302,7 +302,7 @@ actions:
 Each action needs a `label` and a `command`; the rest are optional and control
 when the action appears:
 
-| Field         | Meaning                                                            | Default |
+| Field         | Meaning                                                           | Default |
 | ------------- | ----------------------------------------------------------------- | ------- |
 | `selection`   | `none` (empty area), `single`, `multiple`, or `any` selected item | `any`   |
 | `mimeTypes`   | only when every selected item matches one of these globs          | any     |
@@ -313,12 +313,12 @@ when the action appears:
 The `command` runs through `/bin/sh` from the current folder, with these tokens
 substituted (each safely shell-quoted):
 
-| Token | Expands to             | Token | Expands to           |
-| ----- | ---------------------- | ----- | -------------------- |
-| `%f`  | first selected path    | `%F`  | all selected paths   |
-| `%u`  | first selected URI     | `%U`  | all selected URIs    |
-| `%n`  | first selected name    | `%N`  | all selected names   |
-| `%d`  | current folder path    | `%%`  | a literal `%`        |
+| Token | Expands to          | Token | Expands to         |
+| ----- | ------------------- | ----- | ------------------ |
+| `%f`  | first selected path | `%F`  | all selected paths |
+| `%u`  | first selected URI  | `%U`  | all selected URIs  |
+| `%n`  | first selected name | `%N`  | all selected names |
+| `%d`  | current folder path | `%%`  | a literal `%`      |
 
 With nothing selected, `%f`/`%F`/`%u`/`%U` fall back to the current folder. The
 file is re-read every time you open the context menu, so edits take effect
