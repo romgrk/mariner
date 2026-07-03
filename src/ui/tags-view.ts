@@ -110,8 +110,10 @@ export function createTagsView(): TagsView {
       activatable: true,
     })
     r._file = fileForUri(tagUri(tag.name))
-    if (!hiddenMode) r.addPrefix(reorderHandle(r, tag, tags, index))
+    /* add_prefix prepends, so the LAST-added prefix is leftmost: swatch first,
+     * then the drag handle so it leads the whole row. */
     r.addPrefix(swatchBox(tag.color))
+    if (!hiddenMode) r.addPrefix(reorderHandle(r, tag, tags, index))
 
     if (hiddenMode) {
       const unhide = new Gtk.Button({ label: 'Unhide', valign: Gtk.Align.CENTER })
