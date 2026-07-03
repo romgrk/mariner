@@ -1,5 +1,6 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
+import GLib from 'gi:GLib-2.0'
 import {
   displayName, formatType, formatSize, formatBytes, formatModified, isDirectory,
 } from '../core/format.ts'
@@ -104,8 +105,10 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile, opts: 
 
   const page = new Adw.PreferencesPage()
   const group = new Adw.PreferencesGroup()
+  /* Adw.ActionRow renders its subtitle as Pango markup, so raw data (a filename
+   * or path with & < >, "Read & Write") must be escaped or it fails to parse. */
   const row = (title: string, subtitle: string) => {
-    const r = new Adw.ActionRow({ title, subtitle: String(subtitle || '—') })
+    const r = new Adw.ActionRow({ title, subtitle: GLib.markupEscapeText(String(subtitle || '—'), -1) })
     r.addCssClass('property')
     group.add(r)
   }
