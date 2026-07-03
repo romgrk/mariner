@@ -56,8 +56,7 @@ export function createSidebar(
 
   list.on('row-activated', (...a: any[]) => {
     const row = a[a.length - 1]
-    if (row?._activate) row._activate()
-    else if (row?._file) onNavigate(row._file)
+    if (row?._file) onNavigate(row._file)
   })
 
   function addSeparator(): void {
@@ -125,26 +124,39 @@ export function createSidebar(
     prevSection = section
   }
 
-  /* The Tags group: a collapsible "Tags" header (chevron mirrors the state,
-   * persisted in the tags database), then one row per visible tag that has
-   * files — colored dot + name — and an "All Tags" row navigating to the
-   * tag:/// page. Hidden tags never show here; empty tags live only on the
-   * Tags page. Files can be dropped on a tag row to tag them. */
+  /* The Tags group: a split "Tags" header — activating the row opens the Tags
+   * page (tag:///) while the trailing chevron button collapses/expands the
+   * group (state persisted in the tags database) — then one row per visible
+   * tag that has files (colored dot + name). Hidden tags never show here;
+   * empty tags live only on the Tags page. Files can be dropped on a tag row
+   * to tag them. */
   function addTagRows(): void {
     enterSection(SECTION_TAGS)
     const expanded = tagsService.getSetting(TAGS_EXPANDED_KEY, '1') === '1'
 
-    const header = new Gtk.ListBoxRow({ focusOnClick: false, selectable: false })
+    const header = new Gtk.ListBoxRow({ focusOnClick: false })
+    const headerFile = fileForUri('tag:///')
+    header._file = headerFile
     const hb = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL })
     hb.append(new Gtk.Image({ iconName: tagIconName(), marginEnd: 8 }))
     hb.append(new Gtk.Label({ label: 'Tags', xalign: 0, hexpand: true }))
-    hb.append(new Gtk.Image({ iconName: expanded ? 'pan-down-symbolic' : 'pan-end-symbolic' }))
-    header.setChild(hb)
-    header._activate = () => {
+    /* The chevron is its own button (like the device rows' eject button), so
+     * it toggles without activating the row. */
+    const toggle = new Gtk.Button({
+      iconName: expanded ? 'pan-down-symbolic' : 'pan-end-symbolic',
+      halign: Gtk.Align.CENTER, valign: Gtk.Align.CENTER,
+      tooltipText: expanded ? 'Collapse' : 'Expand',
+    })
+    toggle.addCssClass('sidebar-button')
+    toggle.addCssClass('flat')
+    toggle.on('clicked', () => {
       tagsService.setSetting(TAGS_EXPANDED_KEY, expanded ? '0' : '1')
       build()
-    }
+    })
+    hb.append(toggle)
+    header.setChild(hb)
     list.append(header)
+    rows.push({ row: header, uri: headerFile.getUri() })
     if (!expanded) return
 
     const counts = tagsService.counts()
@@ -169,19 +181,6 @@ export function createSidebar(
       rows.push({ row, uri: file.getUri() })
     }
 
-    /* "All Tags" is a real location (tag:///) — the Tags overview page. */
-    const all = new Gtk.ListBoxRow({ focusOnClick: false })
-    const allFile = fileForUri('tag:///')
-    all._file = allFile
-    const ab = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, marginStart: 10 })
-    const dot = new Gtk.Box({ valign: Gtk.Align.CENTER, marginEnd: 10 })
-    dot.addCssClass('mariner-sidebar-tag-dot')
-    dot.addCssClass('all-tags-dot')
-    ab.append(dot)
-    ab.append(new Gtk.Label({ label: 'All Tags', xalign: 0, hexpand: true }))
-    all.setChild(ab)
-    list.append(all)
-    rows.push({ row: all, uri: allFile.getUri() })
   }
 
   function build(): void {

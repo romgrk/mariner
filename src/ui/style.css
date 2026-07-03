@@ -195,12 +195,6 @@ rubberband {
   min-height: 9px;
   border-radius: 5px;
 }
-/* The "All Tags" row's dashed outline dot. */
-.mariner-sidebar-tag-dot.all-tags-dot {
-  background: none;
-  border: 1px dashed alpha(currentColor, 0.5);
-}
-
 
 /* Color swatch buttons (tag rows and the tag-dialog palette). */
 .mariner-tag-swatch {
