@@ -347,6 +347,7 @@ export class AppWindow {
     add('select-all', () => this.activeTab?.view.selectAll())
     add('select-pattern', () => this._selectPattern())
     add('preview', () => { if (this.activeTab) this.togglePreview(this.activeTab) })
+    add('show-in-folder', () => this._showInFolder())
     add('open', () => this._openSelection())
     add('open-new-tab', () => this._openNewTab())
     add('open-with', () => { const s = this._selected()[0]; if (s) openWithDialog(this.window, s.info, s.file) })
@@ -570,6 +571,7 @@ export class AppWindow {
       act('Open', 'open', { icon: 'document-open-symbolic', primary: true })
       if (isDir) act('Open in New Tab', 'open-new-tab', { icon: 'tab-new-symbolic', primary: true })
       else act('Open With…', 'open-with', { icon: 'emblem-system-symbolic', primary: true })
+      if (this._canShowInFolder(tab, sel)) act('Show in Folder', 'show-in-folder', { icon: 'folder-symbolic', primary: true })
       act('Preview', 'preview', { icon: 'view-reveal-symbolic', primary: true })
       act('Cut', 'cut', { icon: 'edit-cut-symbolic', primary: true })
       act('Copy', 'copy', { icon: 'edit-copy-symbolic', primary: true })
@@ -882,7 +884,10 @@ export class AppWindow {
         tags = { custom: false, overflow: false, assigned, items: this._buildTagActions(files) }
       }
     }
-    this._popupMenu(buildContextMenu({ target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark, tags }), widget, x, y, customs)
+    this._popupMenu(buildContextMenu({
+      target, inTrash, clipboardEmpty: this.clipboard.isEmpty, isSplit: tab.isSplit, bookmark, tags,
+      canShowInFolder: this._canShowInFolder(tab, sel),
+    }), widget, x, y, customs)
   }
 
   /* Context menu for a drive/partition row in the Computer view. Its actions
@@ -945,6 +950,37 @@ export class AppWindow {
   /* ---- Operations ---- */
   _selected(): Entry[] { return this.activeTab ? this.activeTab.view.getSelected() : [] }
   _selectedFiles(): GFile[] { return this._selected().map(s => s.file) }
+
+  /* The file an entry really points at: Recent (and similar backends) list
+   * proxy URIs carrying the real location in standard::target-uri. */
+  _realFile(entry: Entry): GFile {
+    const target = entry.info.getAttributeString?.('standard::target-uri')
+    return target ? fileForUri(target) : entry.file
+  }
+
+  /* Whether the selection is displayed outside its parent folder — a tag
+   * listing, search results (even direct children: revealing exits the
+   * search), Recent — so "Show in Folder" makes sense. */
+  _canShowInFolder(tab: Tab | null, sel: Entry[]): boolean {
+    const loc = tab?.location
+    if (!loc || !sel.length || this._inTrash(loc)) return false
+    if (tab.isShowingSearch) return true
+    const locUri = loc.getUri()
+    return sel.some(s => {
+      const p = this._realFile(s).getParent()
+      return !!p && p.getUri() !== locUri
+    })
+  }
+
+  /* Reveal the selection in its parent folder(s), selecting the items — the
+   * same path org.freedesktop.FileManager1 "Show in folder" uses. */
+  _showInFolder(): void {
+    const uris = this._selected()
+      .map(s => this._realFile(s))
+      .filter(f => !!f.getParent())
+      .map(f => f.getUri())
+    if (uris.length) this.revealItems(uris)
+  }
 
   async _newFolder(): Promise<void> {
     if (!this.activeTab) return

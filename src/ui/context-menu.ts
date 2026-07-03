@@ -34,13 +34,16 @@ export interface MenuContext {
   /* Tags for the selection (null hides the Tags section — trash, background,
    * virtual schemes). */
   tags: TagMenuContext | null
+  /* Whether the selection is shown outside its parent folder (tag listing,
+   * search results, Recent) — offers "Show in Folder". */
+  canShowInFolder: boolean
 }
 
 /* Builds the file-view context-menu model (nautilus-like sections), varying by
  * whether an item is targeted, whether we're in Trash, clipboard state, and
  * whether the tab is split (dual-pane copy/move targets). Pure — the window
  * owns popover creation/positioning and the paste target. */
-export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, bookmark, tags }: MenuContext): any {
+export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, bookmark, tags, canShowInFolder }: MenuContext): any {
   const menu = Gio.Menu.new()
   const section = (...items: Array<[string, string]>) => {
     const s = Gio.Menu.new()
@@ -93,7 +96,9 @@ export function buildContextMenu({ target, inTrash, clipboardEmpty, isSplit, boo
   } else if (target) {
     const isDir = isDirectory(target.info)
     const isImage = (target.info.getContentType() || '').startsWith('image/')
-    section(['Open', 'win.open'], isDir ? ['Open in New Tab', 'win.open-new-tab'] : ['Open With…', 'win.open-with'])
+    const open: Array<[string, string]> = [['Open', 'win.open'], isDir ? ['Open in New Tab', 'win.open-new-tab'] : ['Open With…', 'win.open-with']]
+    if (canShowInFolder) open.push(['Show in Folder', 'win.show-in-folder'])
+    section(...open)
     section(['Preview', 'win.preview'])
 
     const edit: Array<[string, string]> = [['Cut', 'win.cut'], ['Copy', 'win.copy']]
