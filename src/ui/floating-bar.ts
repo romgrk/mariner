@@ -4,16 +4,18 @@ import Pango from 'gi:Pango-1.0'
 
 /* A small overlay status pill, mirroring nautilus's NautilusFloatingBar
  * (src/nautilus-floating-bar.c + .floating-bar in style.css): a rounded box
- * pinned to a corner of the view via an Adw/Gtk overlay. Currently drives the
- * typeahead query indicator; kept general (optional spinner) for future
- * loading/selection status use.
+ * pinned to a corner of the view via an Adw/Gtk overlay. Drives the typeahead
+ * query indicator and the "Searching…" progress status (spinner + Cancel).
  *
- * Purely informational — canTarget is false so it never intercepts clicks on
- * the items beneath it (nautilus instead hides on hover; we don't need that). */
+ * Passthrough by default (canTarget false) so it never intercepts clicks on the
+ * items beneath it — except while its Cancel button is shown (a running search),
+ * where it becomes interactive so the button is clickable, like nautilus. */
 export class FloatingBar {
   widget: any
   _label: any
   _spinner: any
+  _stop: any
+  onStop: () => void = () => {}
 
   constructor(align: { h?: any; v?: any } = {}) {
     this.widget = new Gtk.Box({
@@ -34,13 +36,26 @@ export class FloatingBar {
       marginTop: 2, marginBottom: 2, marginStart: 8, marginEnd: 8,
     })
     this.widget.append(this._label)
+
+    /* Cancel button — mirrors nautilus's floating-bar stop button (circular,
+     * flat, process-stop icon). Hidden unless a cancellable status is shown. */
+    this._stop = new Gtk.Button({
+      iconName: 'process-stop-symbolic', valign: Gtk.Align.CENTER,
+      tooltipText: 'Cancel', cssClasses: ['circular', 'flat'], visible: false,
+    })
+    this._stop.on('clicked', () => this.onStop())
+    this.widget.append(this._stop)
   }
 
-  show(text: string, { spinner = false }: { spinner?: boolean } = {}): void {
+  show(text: string, { spinner = false, stop = false }: { spinner?: boolean; stop?: boolean } = {}): void {
     this._label.setLabel(text)
     this._spinner.setVisible(spinner)
+    this._stop.setVisible(stop)
+    /* Only grab pointer events when there's a button to click; otherwise stay
+     * passthrough so clicks fall through to the items beneath the pill. */
+    this.widget.setCanTarget(stop)
     this.widget.setVisible(true)
   }
 
-  hide(): void { this.widget.setVisible(false) }
+  hide(): void { this.widget.setVisible(false); this.widget.setCanTarget(false) }
 }

@@ -50,6 +50,7 @@ export class Pane {
     this.view.onDropFiles = (files, targetDir) => this.onDropFiles(files, targetDir)
     this.view.onPreview = () => this.onPreview()
     this.view.onFocusIn = () => this.onFocused()
+    this.view.onSearchStop = () => this._stopSearch()
     this.view.isCutFile = f => this.isCutFile(f)
 
     /* The Computer interface (computer:///) lives alongside the file view in a
@@ -95,10 +96,10 @@ export class Pane {
     this.dir.on('error', (msg: string) => this.view.showError(msg))
     this.dir.on('invalidated', () => { if (!this.isShowingSearch) this.dir.load(this.location) })
 
-    this.search.on('start', () => { this.view.configure(this._searchConfig()); this.view.beginLoading() })
-    this.search.on('result', (pair: Entry) => this.view.addEntries([pair]))
-    this.search.on('end', () => { if (this.isShowingSearch) this.view.finishLoading('search') })
-    this.search.on('error', (msg: string) => this.view.showError(msg))
+    this.search.on('start', () => { this.view.configure(this._searchConfig()); this.view.beginLoading(); this.view.showSearchProgress() })
+    this.search.on('result', (batch: Entry[]) => this.view.addEntries(batch))
+    this.search.on('end', () => { this.view.hideSearchProgress(); if (this.isShowingSearch) this.view.finishLoading('search') })
+    this.search.on('error', (msg: string) => { this.view.hideSearchProgress(); this.view.showError(msg) })
   }
 
   _dirConfig(): ViewConfig {
@@ -171,7 +172,18 @@ export class Pane {
    * off) should land on the panel, not the header. */
   endSearch(): void { if (!this.searching) return; this._exitSearch(); this.view.prepareForNavigation(); this.dir.load(this.location) }
 
-  _exitSearch(): void { this.searching = false; this.searchQuery = ''; this.search.cancel() }
+  _exitSearch(): void { this.searching = false; this.searchQuery = ''; this.search.cancel(); this.view.hideSearchProgress() }
+
+  /* The floating "Searching…" bar's Cancel button: stop the running search but
+   * keep the matches found so far and stay in search mode, like nautilus's stop.
+   * finishLoading settles the partial results (and shows the empty state if
+   * nothing matched yet) since a cancelled stream emits no 'end'. */
+  _stopSearch(): void {
+    if (!this.search.active) return
+    this.search.cancel()
+    this.view.hideSearchProgress()
+    if (this.isShowingSearch) this.view.finishLoading('search')
+  }
 
   _runSearch(): void {
     if (this.searchActive) {
@@ -190,6 +202,7 @@ export class Pane {
       this.search.search(this.location, this.searchQuery, { showHidden: this.prefs.showHidden, filter: this.searchFilter })
     } else {
       this.search.cancel()
+      this.view.hideSearchProgress()
       this.dir.load(this.location)   /* empty query + no filter → show the current folder */
     }
   }
