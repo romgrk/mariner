@@ -72,7 +72,7 @@ export interface CopyItem {
 /* File-operation feedback payloads. Long ops carry an `id` so a concurrent
  * operations queue can track and cancel each independently. */
 export interface OpBegin { id: number; title: string }
-export interface OpProgress { id: number; title: string; done: number; total: number }
+export interface OpProgress { id: number; title: string; done: number; total: number; paused?: boolean }
 export interface OpDone { id: number; title: string; count: number; cancelled: boolean }
 export interface OpError { id?: number; title: string; message: string }
 export interface OpNotify { message: string }

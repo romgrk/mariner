@@ -162,6 +162,13 @@
   --accent-color: oklab(from var(--accent-bg-color) var(--standalone-color-oklab));
 }
 
+/* Round the rubber-band selection rectangle's corners, like nautilus. The band
+ * inherits the neutral-grey --accent-bg-color above for its border/fill; this
+ * just softens its corners to match GNOME Files. */
+rubberband {
+  border-radius: 6px;
+}
+
 /* Dim hidden/backup files when they are shown. */
 .view .hidden-file {
   opacity: 0.55;
@@ -259,4 +266,16 @@
 }
 .computer-tile-usage {
   font-size: 0.9em;
+}
+
+/* Operations queue: briefly flash the header button when an operation finishes
+ * (a port of nautilus' "needs-attention"). A neutral currentColor highlight keeps
+ * with Mariner's desaturated look and adapts to light/dark. */
+@keyframes op-finished-flash {
+  0% { }
+  10% { background-color: color-mix(in srgb, currentColor 22%, transparent); }
+  100% { }
+}
+menubutton.op-flash > button {
+  animation: op-finished-flash 2s ease-in-out;
 }

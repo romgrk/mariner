@@ -20,6 +20,7 @@ export const ACCELS: Record<string, string[]> = {
   'win.search': ['<ctrl>f'],
   'win.show-hidden': ['<ctrl>h'],
   'win.select-all': ['<ctrl>a'],
+  'win.select-pattern': ['<ctrl>s'],
   'win.invert-selection': ['<ctrl><shift>i'],
   'win.copy': ['<ctrl>c'],
   'win.cut': ['<ctrl>x'],

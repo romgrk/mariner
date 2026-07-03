@@ -279,14 +279,20 @@ criticals per GSK snapshot are expected — present on HEAD too.)
   implemented but only construction-verified (needs a real compositor).
   Rubber-band uses GTK's `enable-rubberband`, disabled during item drags so DnD
   works (GTK#5670).
-- **Conflict resolution** handles top-level collisions only; "Replace" of a
-  directory is delete-then-copy, not a merge. System-clipboard paste stays
+- **Conflict resolution** — "Replace" of a directory is a real recursive merge
+  (labelled "Merge"): destination-only files are preserved, and colliding leaf
+  files prompt per-file (Replace/Skip/Keep Both, honouring "apply to all").
+  Move-merges rmdir the emptied source shells; merges skip undo (overwritten
+  originals can't be restored) with a toast. System-clipboard paste stays
   auto-rename.
 - **Thumbnails** — images only (no video/PDF generation); other types use the
   freedesktop cache when already present. Not persisted back.
 - **Preview** — text/image/av + metadata fallback; no PDF/markdown rendering
   (markdown treated as text); text is a bounded 512 KB read.
-- **Ops queue** is concurrent, cancel-only (no pause/resume).
+- **Ops queue** is concurrent with per-op cancel + pause/resume (file jobs drop
+  their idle source; archive ops SIGSTOP/SIGCONT the child). A completed op fills
+  its bar, flashes the header button, and lingers as a ✓ until dismissed via
+  "Clear" (cancelled ops vanish immediately).
 - **Disk-usage sunburst** shows 5 rings from the current root (deeper contents
   still count toward sizes); local paths only; redraws on each incremental scan.
 - **Search** matches name only (category/date/contents filters apply on top).
@@ -298,8 +304,11 @@ criticals per GSK snapshot are expected — present on HEAD too.)
   read-only (no chmod); no network/remote locations; no starred files. XDG
   special dirs are hidden when they resolve to `$HOME`. (See README "Not yet
   supported".)
-- Large single-file copies + archive ops show a **pulsing** (indeterminate) bar,
-  not a percentage.
+- Large **cross-filesystem** single-file copies stream in chunks and show a real
+  byte percentage (same-fs copies keep native `g_file_copy` for reflink/metadata,
+  so they're near-instant); zip/7z/plain-tar extraction shows a real entry-count
+  percentage. Compressed-tar/rar extraction and all compression still **pulse**
+  (a cheap total isn't available).
 - `tsc` isn't vendored — `npm install` before `npm run typecheck`; the app runs
   without it.
 
