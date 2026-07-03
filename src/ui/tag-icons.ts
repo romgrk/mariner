@@ -16,6 +16,17 @@ export function tagIconName(): string {
   return _iconName
 }
 
+/* The six-dot reorder handle. The themed icon when available, else a braille
+ * ⠿ label that reads the same. */
+export function dragHandle(): any {
+  try {
+    const theme = Gtk.IconTheme.getForDisplay(Gdk.Display.getDefault())
+    if (theme.hasIcon('list-drag-handle-symbolic'))
+      return new Gtk.Image({ iconName: 'list-drag-handle-symbolic' })
+  } catch {}
+  return new Gtk.Label({ label: '⠿' })
+}
+
 /* A GIcon of a small filled circle in the tag's color — the dot shown on the
  * context menu's tag toggle items. A tiny inline SVG via BytesIcon (rendered by
  * the gdk-pixbuf svg loader), cached per color. */

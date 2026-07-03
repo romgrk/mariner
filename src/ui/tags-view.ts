@@ -9,7 +9,7 @@ import { fileForUri } from '../core/gio.ts'
 import { confirm } from './dialogs.ts'
 import { newTagDialog, editTagDialog, swatchBox } from './new-tag-dialog.ts'
 import { makeDropTarget } from './dnd.ts'
-import { tagIconName } from './tag-icons.ts'
+import { tagIconName, dragHandle } from './tag-icons.ts'
 import type { GFile } from '../core/types.ts'
 
 /* The Tags overview — rendered at tag:/// ("All Tags") and tag:///,hidden
@@ -110,6 +110,7 @@ export function createTagsView(): TagsView {
       activatable: true,
     })
     r._file = fileForUri(tagUri(tag.name))
+    if (!hiddenMode) r.addPrefix(reorderHandle(r, tag, tags, index))
     r.addPrefix(swatchBox(tag.color))
 
     if (hiddenMode) {
@@ -122,7 +123,6 @@ export function createTagsView(): TagsView {
     /* Drop files on a row to tag them. */
     r.addController(makeDropTarget(files => tagsService.addTag(files, tag.name)))
 
-    if (!hiddenMode) attachReorder(r, tag, tags, index)
     return r
   }
 
@@ -161,14 +161,26 @@ export function createTagsView(): TagsView {
     return menu
   }
 
-  /* Drag a row onto another to reorder: dropping on the top half inserts
-   * before that row, on the bottom half after it. */
-  function attachReorder(r: any, tag: Tag, tags: Tag[], index: number): void {
+  /* Reorder by dragging the six-dot handle onto another row: dropping on the
+   * top half inserts before that row, on the bottom half after it. The drag
+   * starts from the handle only, so plain row clicks stay activations; the
+   * whole row is the drop target. */
+  function reorderHandle(r: any, tag: Tag, tags: Tag[], index: number): any {
+    const handle = dragHandle()
+    handle.setValign(Gtk.Align.CENTER)
+    handle.addCssClass('dim-label')
+    handle.setTooltipText('Drag to reorder')
+    try { handle.setCursor(Gdk.Cursor.newFromName('grab', null)) } catch {}
+
     const source = new Gtk.DragSource({ actions: Gdk.DragAction.MOVE })
     source.on('prepare', () => {
       try { return Gdk.ContentProvider.newForValue(stringValue(tag.name)) } catch { return null }
     })
-    r.addController(source)
+    /* Show the whole row as the drag icon, grabbed roughly at the handle. */
+    source.on('drag-begin', (...a: any[]) => {
+      try { Gtk.DragIcon.setFromPaintable(a[a.length - 1], new Gtk.WidgetPaintable({ widget: r }), 16, 16) } catch {}
+    })
+    handle.addController(source)
 
     const target = Gtk.DropTarget.new(STRING_TYPE, Gdk.DragAction.MOVE)
     target.on('drop', (...a: any[]) => {
@@ -182,6 +194,8 @@ export function createTagsView(): TagsView {
       return true
     })
     r.addController(target)
+
+    return handle
   }
 
   refresh()
