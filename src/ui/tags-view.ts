@@ -106,7 +106,6 @@ export function createTagsView(): TagsView {
   function row(tag: Tag, count: number, tags: Tag[], index: number): any {
     const r = new Adw.ActionRow({
       title: GLib.markupEscapeText(tag.name, -1),
-      subtitle: `${count} file${count === 1 ? '' : 's'}`,
       activatable: true,
     })
     r._file = fileForUri(tagUri(tag.name))
@@ -120,10 +119,15 @@ export function createTagsView(): TagsView {
       unhide.on('clicked', () => tagsService.setTagHidden(tag.name, false))
       r.addSuffix(unhide)
     }
-    /* Rows navigate (to the tag's own listing) — say so with a chevron. */
+    /* Trailing: count, then a chevron (rows navigate to the tag's own
+     * listing), then a separator setting the ⋮ menu apart. */
+    const countLabel = new Gtk.Label({ label: `${count} file${count === 1 ? '' : 's'}` })
+    countLabel.addCssClass('dim-label')
+    r.addSuffix(countLabel)
     const chevron = new Gtk.Image({ iconName: 'go-next-symbolic', valign: Gtk.Align.CENTER })
     chevron.addCssClass('dim-label')
     r.addSuffix(chevron)
+    r.addSuffix(new Gtk.Separator({ orientation: Gtk.Orientation.VERTICAL, marginTop: 14, marginBottom: 14 }))
     r.addSuffix(rowMenu(tag, count))
 
     /* Drop files on a row to tag them. */
@@ -175,6 +179,7 @@ export function createTagsView(): TagsView {
     const handle = dragHandle()
     handle.setValign(Gtk.Align.CENTER)
     handle.addCssClass('dim-label')
+    handle.addCssClass('mariner-drag-handle')
     handle.setTooltipText('Drag to reorder')
     try { handle.setCursor(Gdk.Cursor.newFromName('grab', null)) } catch {}
 

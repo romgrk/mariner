@@ -202,7 +202,7 @@ rubberband {
 }
 
 
-/* Tag manager: color swatch buttons (in rows and in the new-tag palette). */
+/* Color swatch buttons (tag rows and the tag-dialog palette). */
 .mariner-tag-swatch {
   min-width: 18px;
   min-height: 18px;
@@ -213,9 +213,17 @@ rubberband {
   background: none;
   border: 1px dashed alpha(currentColor, 0.5);
 }
-.mariner-tag-swatch.selected-swatch {
-  outline: 2px solid @accent_bg_color;
-  outline-offset: 1px;
+/* The check marking the active color in the palettes. */
+.mariner-swatch-check {
+  color: white;
+}
+.mariner-swatch-check-plain {
+  color: alpha(currentColor, 0.8);
+}
+
+/* The six-dot reorder handle: padding widens the drag target. */
+.mariner-drag-handle {
+  padding: 8px 7px;
 }
 
 /* Search-filter tag chips: toggle buttons shrunk to pill size. */

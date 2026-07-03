@@ -16,6 +16,21 @@ export function swatchBox(color: string | null): any {
 const colorLabel = (color: string | null): string =>
   color ? (TAG_COLORS.find(c => c.key === color)?.label ?? color) : 'No color (text tag)'
 
+/* A swatch with a check overlay marking the active color (white on colored
+ * swatches, normal fg on the dashed no-color one). `_check` is exposed so the
+ * dialog can move the mark without rebuilding the palette. */
+export function checkedSwatch(color: string | null, checked: boolean): any {
+  const overlay = new Gtk.Overlay({ child: swatchBox(color) })
+  const check = new Gtk.Image({
+    iconName: 'object-select-symbolic', pixelSize: 12,
+    halign: Gtk.Align.CENTER, valign: Gtk.Align.CENTER, visible: checked,
+  })
+  check.addCssClass(color ? 'mariner-swatch-check' : 'mariner-swatch-check-plain')
+  overlay.addOverlay(check)
+  overlay._check = check
+  return overlay
+}
+
 interface TagDialogOptions {
   heading: string
   confirmLabel: string
@@ -37,21 +52,18 @@ function tagDialog(parent: any, opts: TagDialogOptions): Promise<{ name: string;
     box.append(entry)
 
     let color: string | null = opts.initialColor ?? null
-    const swatches: Array<{ button: any; color: string | null }> = []
+    const swatches: Array<{ swatch: any; color: string | null }> = []
     const pal = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 4, halign: Gtk.Align.CENTER })
     for (const c of [...TAG_COLORS.map(x => x.key), null]) {
       const b = new Gtk.Button({ valign: Gtk.Align.CENTER, tooltipText: colorLabel(c) })
       b.addCssClass('flat')
-      if (c === color) b.addCssClass('selected-swatch')
-      b.setChild(swatchBox(c))
+      const swatch = checkedSwatch(c, c === color)
+      b.setChild(swatch)
       b.on('clicked', () => {
         color = c
-        for (const s of swatches) {
-          if (s.color === c) s.button.addCssClass('selected-swatch')
-          else s.button.removeCssClass('selected-swatch')
-        }
+        for (const s of swatches) s.swatch._check.setVisible(s.color === c)
       })
-      swatches.push({ button: b, color: c })
+      swatches.push({ swatch, color: c })
       pal.append(b)
     }
     box.append(pal)
