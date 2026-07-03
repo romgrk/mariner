@@ -126,11 +126,10 @@ export function createSidebar(
   }
 
   /* The Tags group: a collapsible "Tags" header (chevron mirrors the state,
-   * persisted in the tags database), then one row per PINNED tag — colored dot,
-   * name, file count — and an "All Tags" row navigating to the tag:/// page.
-   * All tags are pinned by default; unpinning (Tags page → Edit Tags) removes a
-   * tag from here without deleting it. Files can be dropped on a tag row to tag
-   * them. */
+   * persisted in the tags database), then one row per visible tag that has
+   * files — colored dot + name — and an "All Tags" row navigating to the
+   * tag:/// page. Hidden tags never show here; empty tags live only on the
+   * Tags page. Files can be dropped on a tag row to tag them. */
   function addTagRows(): void {
     enterSection(SECTION_TAGS)
     const expanded = tagsService.getSetting(TAGS_EXPANDED_KEY, '1') === '1'
@@ -149,9 +148,8 @@ export function createSidebar(
     if (!expanded) return
 
     const counts = tagsService.counts()
-    for (const tag of tagsService.tags()) {
-      if (!tag.pinned) continue
-      const count = counts.get(tag.name) ?? 0
+    for (const tag of tagsService.visibleTags()) {
+      if ((counts.get(tag.name) ?? 0) === 0) continue
       const row = new Gtk.ListBoxRow({ focusOnClick: false })
       const file = fileForUri(tagUri(tag.name))
       row._file = file
@@ -162,10 +160,6 @@ export function createSidebar(
       dot.addCssClass(tag.color ? 'tag-color-' + tag.color : 'mariner-tag-dot')
       b.append(dot)
       b.append(new Gtk.Label({ label: tag.name, xalign: 0, hexpand: true, ellipsize: 2, marginEnd: 2 }))
-      const countLabel = new Gtk.Label({ label: String(count) })
-      countLabel.addCssClass('dim-label')
-      countLabel.addCssClass('mariner-sidebar-tag-count')
-      b.append(countLabel)
       row.setChild(b)
 
       /* Drop files on a tag row to apply that tag. */

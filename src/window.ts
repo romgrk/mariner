@@ -403,7 +403,7 @@ export class AppWindow {
    * when EVERY selected file carries the tag (so a mixed selection toggles ON
    * first). Rebuilt per popup; stale actions from the previous popup removed. */
   _buildTagActions(files: GFile[]): TagMenuItem[] {
-    const tags = tagsService.tags()
+    const tags = tagsService.visibleTags()
     for (let i = 0; i < this._tagActionCount; i++) {
       try { this.window.removeAction('tag-toggle-' + i) } catch {}
       delete this._actions['tag-toggle-' + i]
@@ -572,7 +572,7 @@ export class AppWindow {
     if (target && !inTrash) {
       const files = sel.map(s => s.file).filter(f => f.getUri().startsWith('file://'))
       if (files.length === sel.length && files.length > 0) {
-        for (const t of tagsService.tags()) {
+        for (const t of tagsService.visibleTags()) {
           const has = files.every(f => tagsService.tagsOf(f.getUri()).includes(t.name))
           items.push({
             label: has ? `Untag: ${t.name}` : `Tag: ${t.name}`,
@@ -584,12 +584,14 @@ export class AppWindow {
       }
     }
 
-    /* Jump to a tag's virtual location (query-only). */
-    for (const [name, count] of tagsService.counts()) {
+    /* Jump to a tag's virtual location (query-only; hidden tags stay out). */
+    const tagCounts = tagsService.counts()
+    for (const t of tagsService.visibleTags()) {
+      const count = tagCounts.get(t.name) ?? 0
       items.push({
-        label: name, detail: `${count} file${count === 1 ? '' : 's'}`, group: 'folder',
-        icon: tagIconName(), search: `tag ${name}`,
-        run: () => this.navigate(fileForUri(tagUri(name))),
+        label: t.name, detail: `${count} file${count === 1 ? '' : 's'}`, group: 'folder',
+        icon: tagIconName(), search: `tag ${t.name}`,
+        run: () => this.navigate(fileForUri(tagUri(t.name))),
       })
     }
 

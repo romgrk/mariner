@@ -122,7 +122,7 @@ export function showProperties(parent: any, info: GFileInfo, file: GFile, opts: 
   row('Location', parentDir ? parentDir.getPath() : '')
   row('Modified', formatModified(info))
   row('Permissions', permString(info))
-  const tagNames = tagsService.tagsOf(file.getUri())
+  const tagNames = tagsService.tagObjectsOf(file.getUri()).map(t => t.name)
   if (tagNames.length) row('Tags', tagNames.join(', '))
 
   page.add(group)

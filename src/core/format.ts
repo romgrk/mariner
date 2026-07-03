@@ -140,11 +140,15 @@ export function locationName(file: GFile): string {
   if (uri.startsWith('recent:')) return 'Recent'
   if (uri.startsWith('network:')) return 'Network'
   if (uri.startsWith('computer:')) return 'Computer'
-  /* tag:///<name> — title with the (decoded) tag name; the root is "Tags". */
+  /* tag:///<name> — title with the (decoded) tag name; the root is "Tags" and
+   * the reserved ",hidden" child (HIDDEN_TAGS_NAME in tags-service.ts) is the
+   * Hidden Tags page. */
   if (uri.startsWith('tag:')) {
     const m = /^tag:\/\/\/(.+)$/.exec(uri)
     if (!m) return 'Tags'
-    try { return decodeURIComponent(m[1]) } catch { return m[1] }
+    let name: string
+    try { name = decodeURIComponent(m[1]) } catch { name = m[1] }
+    return name === ',hidden' ? 'Hidden Tags' : name
   }
   return file.getBasename() || uri
 }

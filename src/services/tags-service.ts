@@ -39,7 +39,9 @@ export const XATTR_TAGS = 'xattr::xdg.tags'
 export interface Tag {
   name: string
   color: string | null   /* a TAG_COLORS key, or null for a text tag */
-  pinned: boolean
+  /* Hidden tags keep their data (assignments, xattrs) but appear nowhere in
+   * the UI except the "Hidden Tags" page, where they can be unhidden. */
+  hidden: boolean
 }
 
 interface Assignment { tag: string; src: 'xattr' | 'index' }
@@ -67,8 +69,12 @@ export const TAG_COLOR: Record<string, { key: string; label: string; cssVar: str
 const DIR = GLib.getUserDataDir() + '/mariner'
 const DB_FILE = DIR + '/tags.db'
 
-/* tag:///<name> — the virtual location listing a tag's files (tag:/// lists
- * every tagged file). */
+/* tag:///<name> — the virtual location listing a tag's files. The root
+ * (tag:///) is the Tags overview page. HIDDEN_TAGS_NAME is a reserved child
+ * that renders the hidden-tags page — a comma makes it unmintable as a real
+ * tag name (validateTagName rejects commas). */
+export const HIDDEN_TAGS_NAME = ',hidden'
+export const HIDDEN_TAGS_URI = 'tag:///,hidden'
 export function tagUri(name: string): string { return 'tag:///' + encodeURIComponent(name) }
 export function isTagUri(uri: string): boolean { return uri.startsWith('tag:') }
 /* The tag name of a tag:// URI, or null for the root (all tags). */
@@ -119,7 +125,7 @@ export class TagsService extends EventEmitter {
         CREATE TABLE IF NOT EXISTS tags (
           name TEXT PRIMARY KEY,
           color TEXT,
-          pinned INTEGER NOT NULL DEFAULT 1,
+          hidden INTEGER NOT NULL DEFAULT 0,
           sort INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS assignments (
@@ -132,7 +138,7 @@ export class TagsService extends EventEmitter {
         CREATE INDEX IF NOT EXISTS idx_assignments_tag ON assignments(tag);
         CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
       `)
-      this._seed()
+      this._migrate()
       this._loadAll()
       this._dataVersion = this._readDataVersion()
       this._watch()
@@ -143,20 +149,28 @@ export class TagsService extends EventEmitter {
     }
   }
 
-  /* Seed the nine palette tags once (user_version marks it done, so deleting
-   * one later doesn't resurrect it on the next launch). */
-  _seed(): void {
+  /* Schema versions (PRAGMA user_version):
+   *   0 → fresh database: seed the nine palette tags. Seeding is marked done
+   *       so deleting a default later doesn't resurrect it on the next launch.
+   *   1 → had a `pinned` column (shown-in-sidebar); replaced by `hidden`
+   *       (invisible everywhere but the Hidden Tags page). pinned=0 → hidden.
+   *   2 → current. */
+  _migrate(): void {
     const ver = Number(this._db.prepare('PRAGMA user_version').get().user_version)
-    if (ver !== 0) return
-    const ins = this._db.prepare('INSERT OR IGNORE INTO tags (name, color, sort) VALUES (?, ?, ?)')
-    TAG_COLORS.forEach((c, i) => ins.run(c.label, c.key, i))
-    this._db.exec('PRAGMA user_version = 1')
+    if (ver === 0) {
+      const ins = this._db.prepare('INSERT OR IGNORE INTO tags (name, color, sort) VALUES (?, ?, ?)')
+      TAG_COLORS.forEach((c, i) => ins.run(c.label, c.key, i))
+    } else if (ver === 1) {
+      this._db.exec('ALTER TABLE tags ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0')
+      this._db.exec('UPDATE tags SET hidden = CASE WHEN pinned = 0 THEN 1 ELSE 0 END')
+    }
+    if (ver < 2) this._db.exec('PRAGMA user_version = 2')
   }
 
   _loadAll(): void {
     this._tags = new Map()
-    for (const row of this._db.prepare('SELECT name, color, pinned FROM tags ORDER BY sort, name').all())
-      this._tags.set(row.name, { name: row.name, color: row.color ?? null, pinned: !!row.pinned })
+    for (const row of this._db.prepare('SELECT name, color, hidden FROM tags ORDER BY sort, name').all())
+      this._tags.set(row.name, { name: row.name, color: row.color ?? null, hidden: !!row.hidden })
     this._byUri = new Map()
     for (const row of this._db.prepare('SELECT uri, tag, src FROM assignments ORDER BY uri, pos').all()) {
       let arr = this._byUri.get(row.uri)
@@ -194,13 +208,17 @@ export class TagsService extends EventEmitter {
   /* ---- registry ---- */
 
   tags(): Tag[] { this._ensure(); return [...this._tags.values()] }
+  /* Tags that appear in the UI (sidebar, menus, dots, search) — everywhere
+   * except the Hidden Tags page. */
+  visibleTags(): Tag[] { this._ensure(); return [...this._tags.values()].filter(t => !t.hidden) }
+  hiddenTags(): Tag[] { this._ensure(); return [...this._tags.values()].filter(t => t.hidden) }
   getTag(name: string): Tag | null { this._ensure(); return this._tags.get(name) ?? null }
 
   createTag(name: string, color: string | null): Tag | null {
     this._ensure()
     const n = validateTagName(name)
     if (!n || this._tags.has(n)) return null
-    const tag: Tag = { name: n, color: color && TAG_COLOR[color] ? color : null, pinned: true }
+    const tag: Tag = { name: n, color: color && TAG_COLOR[color] ? color : null, hidden: false }
     this._tags.set(n, tag)
     this._sql('INSERT OR IGNORE INTO tags (name, color, sort) VALUES (?, ?, ?)', n, tag.color, this._tags.size)
     this.emit('changed', null)
@@ -241,13 +259,29 @@ export class TagsService extends EventEmitter {
     this.emit('changed', null)
   }
 
-  /* Pinned tags appear in the sidebar (all tags are pinned by default). */
-  setTagPinned(name: string, pinned: boolean): void {
+  /* Hide/unhide: hidden tags disappear from every UI surface (their data is
+   * untouched) until unhidden from the Hidden Tags page. */
+  setTagHidden(name: string, hidden: boolean): void {
     this._ensure()
     const tag = this._tags.get(name)
-    if (!tag || tag.pinned === pinned) return
-    tag.pinned = pinned
-    this._sql('UPDATE tags SET pinned = ? WHERE name = ?', pinned ? 1 : 0, name)
+    if (!tag || tag.hidden === hidden) return
+    tag.hidden = hidden
+    this._sql('UPDATE tags SET hidden = ? WHERE name = ?', hidden ? 1 : 0, name)
+    this.emit('changed', null)
+  }
+
+  /* Reorder: move `name` immediately before `beforeName` (or to the end when
+   * null). Registry order is user-facing — it drives the sidebar, the context
+   * menu and the Tags page alike. */
+  moveTagBefore(name: string, beforeName: string | null): void {
+    this._ensure()
+    if (!this._tags.has(name) || name === beforeName) return
+    const order = [...this._tags.keys()].filter(n => n !== name)
+    const at = beforeName != null ? order.indexOf(beforeName) : -1
+    if (beforeName != null && at < 0) return
+    order.splice(at < 0 ? order.length : at, 0, name)
+    this._tags = new Map(order.map(n => [n, this._tags.get(n)!]))
+    this._tx(() => order.forEach((n, i) => this._sql('UPDATE tags SET sort = ? WHERE name = ?', i, n)))
     this.emit('changed', null)
   }
 
@@ -274,7 +308,7 @@ export class TagsService extends EventEmitter {
     let created = false
     for (const name of names) {
       if (this._tags.has(name)) continue
-      this._tags.set(name, { name, color: null, pinned: true })
+      this._tags.set(name, { name, color: null, hidden: false })
       this._sql('INSERT OR IGNORE INTO tags (name, color, sort) VALUES (?, NULL, ?)', name, this._tags.size)
       created = true
     }
@@ -288,13 +322,15 @@ export class TagsService extends EventEmitter {
     return (this._byUri.get(uri) ?? []).map(e => e.tag)
   }
 
-  /* The tag objects for a URI (for cell dots), in assignment order. */
+  /* The tag objects for a URI in assignment order, for DISPLAY surfaces (cell
+   * dots, the Tags column, Properties) — hidden tags are filtered out; use
+   * tagsOf for logic (toggles, undo snapshots, xattr writes). */
   tagObjectsOf(uri: string): Tag[] {
     this._ensure()
     const out: Tag[] = []
     for (const e of this._byUri.get(uri) ?? []) {
       const t = this._tags.get(e.tag)
-      if (t) out.push(t)
+      if (t && !t.hidden) out.push(t)
     }
     return out
   }
@@ -511,9 +547,10 @@ export class TagsService extends EventEmitter {
  * window; cross-process sync via the database monitor. */
 export const tagsService = new TagsService()
 
-/* The list view's Tags column reads through the service (live after toggles),
- * injected so core/columns.ts stays free of service imports. */
+/* The list view's Tags column reads through the service (live after toggles,
+ * hidden tags filtered), injected so core/columns.ts stays free of service
+ * imports. */
 setTagsColumnFormatter(info => {
   const file = (info as any)._file
-  return file ? tagsService.tagsOf(file.getUri()).join(', ') : ''
+  return file ? tagsService.tagObjectsOf(file.getUri()).map(t => t.name).join(', ') : ''
 })

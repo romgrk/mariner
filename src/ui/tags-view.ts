@@ -1,148 +1,152 @@
 import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
-import Gio from 'gi:Gio-2.0'
+import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
-import { tagsService, TAG_COLORS } from '../services/tags-service.ts'
+import GObject from 'gi:GObject-2.0'
+import { tagsService, tagUri, HIDDEN_TAGS_URI } from '../services/tags-service.ts'
 import type { Tag } from '../services/tags-service.ts'
-import { ATTRS, fileForUri } from '../core/gio.ts'
-import { displayName, formatSize, formatModified } from '../core/format.ts'
-import { promptText, confirm } from './dialogs.ts'
-import { newTagDialog, swatchBox } from './new-tag-dialog.ts'
+import { fileForUri } from '../core/gio.ts'
+import { confirm } from './dialogs.ts'
+import { newTagDialog, editTagDialog, swatchBox } from './new-tag-dialog.ts'
 import { makeDropTarget } from './dnd.ts'
 import { tagIconName } from './tag-icons.ts'
 import type { GFile } from '../core/types.ts'
 
-/* The Tags overview — the tag:/// location ("All Tags"), after the whiteboard
- * #332 "all tags" page: one collapsible, accent-tinted section per tag listing
- * its files (name, size, modified), and a bottom bar with "New Tag…" and an
- * "Edit Tags" toggle that swaps in per-tag controls (pin to sidebar, rename,
- * recolor, delete). Activating a file reveals it in its folder. A pure view —
- * the pane wires onOpenEntry and calls refresh() on navigation/tag changes. */
+/* The Tags overview — rendered at tag:/// ("All Tags") and tag:///,hidden
+ * ("Hidden Tags"). A wide boxed list, one row per tag: color dot, name, file
+ * count, and a "⋮" menu (Edit / Hide / Delete; Unhide on the hidden page).
+ * Activating a row opens the tag's own location (same as the sidebar); rows
+ * are drag-reorderable, and that order drives the sidebar and the context
+ * menu. The title row holds "Hidden Tags" and "New Tag…". A pure view — the
+ * pane wires onNavigate and calls setMode() + refresh() on navigation. */
 export interface TagsView {
   widget: any
   refresh: () => void
-  onOpenEntry: (file: GFile) => void
+  setMode: (hidden: boolean) => void
+  onNavigate: (file: GFile) => void
+}
+
+const STRING_TYPE = GObject.typeFromName('gchararray')
+
+function stringValue(s: string): any {
+  const v = new GObject.Value()
+  v.init(STRING_TYPE)
+  v.setString(s)
+  return v
+}
+
+/* The dropped value may arrive as a raw string or wrapped in a GValue. */
+function droppedString(value: any): string | null {
+  try {
+    if (typeof value === 'string') return value
+    if (value && typeof value.getString === 'function') return value.getString()
+  } catch {}
+  return null
 }
 
 export function createTagsView(): TagsView {
-  const sections = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 8, valign: Gtk.Align.START })
+  let hiddenMode = false
 
-  const clamp = new Adw.Clamp({ maximumSize: 860, child: sections, marginTop: 18, marginBottom: 18, marginStart: 12, marginEnd: 12 })
-  const scroller = new Gtk.ScrolledWindow({ child: clamp, vexpand: true, hexpand: true, hscrollbarPolicy: Gtk.PolicyType.NEVER })
+  const title = new Gtk.Label({ xalign: 0, hexpand: true })
+  title.addCssClass('title-2')
 
-  const bar = new Gtk.ActionBar()
-  const editBtn = new Gtk.ToggleButton({ label: 'Edit Tags' })
+  const hiddenBtn = new Gtk.Button({ label: 'Hidden Tags' })
   const newBtn = new Gtk.Button({ label: 'New Tag…' })
   newBtn.addCssClass('suggested-action')
-  bar.packEnd(editBtn)
-  bar.packEnd(newBtn)
 
-  const root = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL })
-  root.append(scroller)
-  root.append(bar)
+  const header = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 8 })
+  header.append(title)
+  header.append(hiddenBtn)
+  header.append(newBtn)
 
-  const api: TagsView = { widget: root, refresh, onOpenEntry: () => {} }
+  const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.NONE })
+  list.addCssClass('boxed-list')
+  list.setActivateOnSingleClick(true)
+  list.on('row-activated', (...a: any[]) => {
+    const row = a[a.length - 1]
+    if (row?._file) api.onNavigate(row._file)
+  })
 
-  /* Per-tag expansion survives refreshes for the lifetime of the view. */
-  const expanded = new Set<string>()
-  let generation = 0
-  let firstRefresh = true
+  const emptyAll = new Adw.StatusPage({ iconName: tagIconName(), title: 'No Tags', description: 'Create a tag to organize files across folders.' })
+  const emptyHidden = new Gtk.Label({ label: 'No hidden tags', marginTop: 24 })
+  emptyHidden.addCssClass('dim-label')
 
-  newBtn.on('clicked', () => newTagDialog(root))
-  editBtn.on('toggled', refresh)
+  const content = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, spacing: 14 })
+  content.append(header)
+  content.append(list)
+  content.append(emptyAll)
+  content.append(emptyHidden)
+
+  const clamp = new Adw.Clamp({ maximumSize: 860, child: content, marginTop: 24, marginBottom: 24, marginStart: 12, marginEnd: 12 })
+  const scroller = new Gtk.ScrolledWindow({ child: clamp, vexpand: true, hexpand: true, hscrollbarPolicy: Gtk.PolicyType.NEVER })
+
+  const api: TagsView = { widget: scroller, refresh, setMode, onNavigate: () => {} }
+
+  hiddenBtn.on('clicked', () => api.onNavigate(fileForUri(HIDDEN_TAGS_URI)))
+  newBtn.on('clicked', () => newTagDialog(scroller))
+
+  function setMode(hidden: boolean): void { hiddenMode = hidden }
 
   function refresh(): void {
-    generation++
+    title.setLabel(hiddenMode ? 'Hidden Tags' : 'All Tags')
+    hiddenBtn.setVisible(!hiddenMode)
+    newBtn.setVisible(!hiddenMode)
+
     let c
-    while ((c = sections.getFirstChild()) !== null) sections.remove(c)
+    while ((c = list.getFirstChild()) !== null) list.remove(c)
     const counts = tagsService.counts()
-    const tags = tagsService.tags()
-    /* Open the first non-empty section on first show (like the mockup), so the
-     * page doesn't read as a wall of collapsed bars. */
-    if (firstRefresh) {
-      firstRefresh = false
-      const first = tags.find(t => (counts.get(t.name) ?? 0) > 0)
-      if (first) expanded.add(first.name)
-    }
-    for (const tag of tags) sections.append(section(tag, counts.get(tag.name) ?? 0))
-    if (!tags.length) {
-      const empty = new Adw.StatusPage({ iconName: tagIconName(), title: 'No Tags', description: 'Create a tag to organize files across folders.' })
-      sections.append(empty)
-    }
+    const tags = hiddenMode ? tagsService.hiddenTags() : tagsService.visibleTags()
+    tags.forEach((tag, i) => list.append(row(tag, counts.get(tag.name) ?? 0, tags, i)))
+
+    list.setVisible(tags.length > 0)
+    emptyAll.setVisible(!hiddenMode && tags.length === 0)
+    emptyHidden.setVisible(hiddenMode && tags.length === 0)
   }
 
-  function section(tag: Tag, count: number): any {
-    const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL })
-    const isOpen = expanded.has(tag.name)
-
-    /* Header: an accent-tinted bar. A Box (not a Button) so the edit-mode
-     * controls can be real buttons inside it — they claim their own clicks,
-     * everywhere else the click gesture toggles expansion. */
-    const header = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 8 })
-    header.addCssClass('mariner-tag-section')
-    if (tag.color) header.addCssClass('tag-section-' + tag.color)
-
-    header.append(new Gtk.Image({ iconName: isOpen ? 'pan-down-symbolic' : 'pan-end-symbolic' }))
-    const name = new Gtk.Label({ label: tag.name, xalign: 0, ellipsize: 3 /* END */ })
-    name.addCssClass('mariner-tag-section-name')
-    header.append(name)
-    const countLabel = new Gtk.Label({ label: `${count} file${count === 1 ? '' : 's'}`, hexpand: true, xalign: 0 })
-    countLabel.addCssClass('dim-label')
-    header.append(countLabel)
-
-    if (editBtn.getActive()) {
-      for (const w of editControls(tag, count)) header.append(w)
-    }
-
-    const gesture = new Gtk.GestureClick({ button: 1 })
-    gesture.on('released', () => {
-      if (expanded.has(tag.name)) expanded.delete(tag.name)
-      else expanded.add(tag.name)
-      refresh()
+  function row(tag: Tag, count: number, tags: Tag[], index: number): any {
+    const r = new Adw.ActionRow({
+      title: GLib.markupEscapeText(tag.name, -1),
+      subtitle: `${count} file${count === 1 ? '' : 's'}`,
+      activatable: true,
     })
-    header.addController(gesture)
+    r._file = fileForUri(tagUri(tag.name))
+    r.addPrefix(swatchBox(tag.color))
 
-    /* Drop files on the header to tag them. */
-    header.addController(makeDropTarget(files => tagsService.addTag(files, tag.name)))
+    if (hiddenMode) {
+      const unhide = new Gtk.Button({ label: 'Unhide', valign: Gtk.Align.CENTER })
+      unhide.on('clicked', () => tagsService.setTagHidden(tag.name, false))
+      r.addSuffix(unhide)
+    }
+    r.addSuffix(rowMenu(tag, count))
 
-    box.append(header)
-    if (isOpen) box.append(fileList(tag))
-    return box
+    /* Drop files on a row to tag them. */
+    r.addController(makeDropTarget(files => tagsService.addTag(files, tag.name)))
+
+    if (!hiddenMode) attachReorder(r, tag, tags, index)
+    return r
   }
 
-  /* Edit-mode controls: pin-to-sidebar toggle, recolor, rename, delete. */
-  function editControls(tag: Tag, count: number): any[] {
-    const pin = new Gtk.ToggleButton({ iconName: 'view-pin-symbolic', active: tag.pinned, valign: Gtk.Align.CENTER, tooltipText: tag.pinned ? 'Shown in sidebar' : 'Hidden from sidebar' })
-    pin.addCssClass('flat')
-    pin.on('toggled', () => tagsService.setTagPinned(tag.name, pin.getActive()))
-
-    const recolor = new Gtk.MenuButton({ valign: Gtk.Align.CENTER, tooltipText: 'Change Color' })
-    recolor.addCssClass('flat')
-    recolor.setChild(swatchBox(tag.color))
+  /* The "⋮" menu: Edit (name + color in one dialog), Hide/Unhide, Delete. */
+  function rowMenu(tag: Tag, count: number): any {
+    const menu = new Gtk.MenuButton({ iconName: 'view-more-symbolic', valign: Gtk.Align.CENTER })
+    menu.addCssClass('flat')
     const pop = new Gtk.Popover()
-    const pal = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 4, marginTop: 6, marginBottom: 6, marginStart: 6, marginEnd: 6 })
-    for (const c of [...TAG_COLORS.map(x => x.key), null]) {
-      const b = new Gtk.Button({ valign: Gtk.Align.CENTER })
+    const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL, marginTop: 4, marginBottom: 4 })
+
+    const item = (label: string, cb: () => void, destructive = false): void => {
+      const b = new Gtk.Button({ label, halign: Gtk.Align.FILL })
       b.addCssClass('flat')
-      b.setChild(swatchBox(c))
-      b.on('clicked', () => { pop.popdown(); tagsService.setTagColor(tag.name, c) })
-      pal.append(b)
+      b.getChild()?.setXalign?.(0)
+      if (destructive) b.addCssClass('destructive-action')
+      b.on('clicked', () => { pop.popdown(); cb() })
+      box.append(b)
     }
-    pop.setChild(pal)
-    recolor.setPopover(pop)
 
-    const rename = new Gtk.Button({ iconName: 'document-edit-symbolic', valign: Gtk.Align.CENTER, tooltipText: 'Rename' })
-    rename.addCssClass('flat')
-    rename.on('clicked', async () => {
-      const next = await promptText(root, { heading: 'Rename Tag', value: tag.name, okLabel: 'Rename' })
-      if (next && next !== tag.name) tagsService.renameTag(tag.name, next)
-    })
-
-    const del = new Gtk.Button({ iconName: 'user-trash-symbolic', valign: Gtk.Align.CENTER, tooltipText: 'Delete Tag' })
-    del.addCssClass('flat')
-    del.on('clicked', async () => {
+    item('Edit…', () => editTagDialog(scroller, tag))
+    item(tag.hidden ? 'Unhide' : 'Hide', () => tagsService.setTagHidden(tag.name, !tag.hidden))
+    item('Delete', async () => {
       if (count > 0) {
-        const ok = await confirm(root, {
+        const ok = await confirm(scroller, {
           heading: `Delete the tag “${tag.name}”?`,
           body: `It will be removed from ${count} file${count === 1 ? '' : 's'}. The files themselves are not affected.`,
           okLabel: 'Delete',
@@ -150,67 +154,34 @@ export function createTagsView(): TagsView {
         if (!ok) return
       }
       tagsService.deleteTag(tag.name)
-    })
+    }, true)
 
-    return [pin, recolor, rename, del]
+    pop.setChild(box)
+    menu.setPopover(pop)
+    return menu
   }
 
-  /* The expanded body: this tag's files, resolved asynchronously and sorted by
-   * name. Missing files are pruned from the index as they're discovered. */
-  function fileList(tag: Tag): any {
-    const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.NONE })
-    list.addCssClass('mariner-tag-files')
-    list.setActivateOnSingleClick(false)
-    list.on('row-activated', (...a: any[]) => {
-      const row = a[a.length - 1]
-      if (row?._file) api.onOpenEntry(row._file)
+  /* Drag a row onto another to reorder: dropping on the top half inserts
+   * before that row, on the bottom half after it. */
+  function attachReorder(r: any, tag: Tag, tags: Tag[], index: number): void {
+    const source = new Gtk.DragSource({ actions: Gdk.DragAction.MOVE })
+    source.on('prepare', () => {
+      try { return Gdk.ContentProvider.newForValue(stringValue(tag.name)) } catch { return null }
     })
+    r.addController(source)
 
-    const uris = tagsService.filesWith(tag.name)
-    if (!uris.length) {
-      const empty = new Gtk.Label({ label: 'No files with this tag', xalign: 0, marginStart: 12, marginTop: 8, marginBottom: 8 })
-      empty.addCssClass('dim-label')
-      const box = new Gtk.Box({ orientation: Gtk.Orientation.VERTICAL })
-      box.append(empty)
-      return box
-    }
-
-    const gen = generation
-    const resolved: Array<{ file: GFile; info: any }> = []
-    let pending = uris.length
-    const settle = (): void => {
-      if (--pending > 0 || gen !== generation) return
-      resolved.sort((a, b) => displayName(a.info).localeCompare(displayName(b.info)))
-      for (const { file, info } of resolved) list.append(entryRow(file, info))
-    }
-    for (const uri of uris) {
-      const file = fileForUri(uri)
-      file.queryInfoAsync(ATTRS, Gio.FileQueryInfoFlags.NONE, GLib.PRIORITY_DEFAULT, null, (_src: any, res: any) => {
-        try { resolved.push({ file, info: file.queryInfoFinish(res) }) }
-        catch { tagsService.dropUri(uri) }
-        settle()
-      })
-    }
-    return list
-  }
-
-  function entryRow(file: GFile, info: any): any {
-    const row = new Gtk.ListBoxRow({ activatable: true })
-    row._file = file
-    const b = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 10, marginStart: 12, marginEnd: 12, marginTop: 5, marginBottom: 5 })
-    const image = new Gtk.Image({ pixelSize: 16 })
-    const icon = info.getIcon()
-    if (icon) image.setFromGicon(icon)
-    b.append(image)
-    b.append(new Gtk.Label({ label: displayName(info), xalign: 0, hexpand: true, ellipsize: 3 }))
-    const size = new Gtk.Label({ label: formatSize(info), xalign: 1 })
-    size.addCssClass('dim-label')
-    b.append(size)
-    const modified = new Gtk.Label({ label: formatModified(info), xalign: 1, widthChars: 12 })
-    modified.addCssClass('dim-label')
-    b.append(modified)
-    row.setChild(b)
-    return row
+    const target = Gtk.DropTarget.new(STRING_TYPE, Gdk.DragAction.MOVE)
+    target.on('drop', (...a: any[]) => {
+      const dragged = droppedString(a[0])
+      if (!dragged || dragged === tag.name || !tagsService.getTag(dragged)) return false
+      const y = a[2] ?? 0
+      const after = y > r.getAllocatedHeight() / 2
+      const before = after ? (tags[index + 1]?.name ?? null) : tag.name
+      /* Dropping right where it already sits is a no-op. */
+      if (before !== dragged) tagsService.moveTagBefore(dragged, before)
+      return true
+    })
+    r.addController(target)
   }
 
   refresh()

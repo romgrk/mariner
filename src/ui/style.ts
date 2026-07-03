@@ -17,12 +17,9 @@ export function loadStyles(): void {
 
   /* Per-color tag classes (.tag-color-blue { … }), generated from the palette
    * in tags-service.ts. Colors come from libadwaita's accent CSS variables so
-   * they track the light/dark style; the hex is the fallback for older GTK.
-   * .tag-fg-<key> colors text instead (the Tags page section headers). */
+   * they track the light/dark style; the hex is the fallback for older GTK. */
   const tagCss = TAG_COLORS.map(c =>
-    `.tag-color-${c.key} { background-color: var(${c.cssVar}, ${c.hex}); }\n` +
-    `.tag-fg-${c.key} { color: var(${c.cssVar}, ${c.hex}); }\n` +
-    `.tag-section-${c.key} { background-color: color-mix(in srgb, var(${c.cssVar}, ${c.hex}) 18%, transparent); color: var(${c.cssVar}, ${c.hex}); }`,
+    `.tag-color-${c.key} { background-color: var(${c.cssVar}, ${c.hex}); }`,
   ).join('\n')
   const tagProvider = new Gtk.CssProvider()
   /* loadFromString is GTK ≥ 4.12; fall back to the older loadFromData. */

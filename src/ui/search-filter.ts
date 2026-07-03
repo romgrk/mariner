@@ -40,12 +40,12 @@ export function createSearchFilterButton(onChange: (f: SearchFilter) => void): S
   const rebuildChips = (): void => {
     let c
     while ((c = chips.getFirstChild()) !== null) chips.remove(c)
-    const names = new Set(tagsService.tags().map(t => t.name))
-    /* Drop toggled tags that no longer exist; re-run the search if that
-     * changed the effective filter. */
+    const names = new Set(tagsService.visibleTags().map(t => t.name))
+    /* Drop toggled tags that no longer exist (or went hidden); re-run the
+     * search if that changed the effective filter. */
     let pruned = false
     for (const n of [...active]) if (!names.has(n)) { active.delete(n); pruned = true }
-    for (const tag of tagsService.tags()) {
+    for (const tag of tagsService.visibleTags()) {
       const btn = new Gtk.ToggleButton({ active: active.has(tag.name) })
       btn.addCssClass('mariner-tag-chip')
       const content = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 5 })

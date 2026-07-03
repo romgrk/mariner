@@ -5,7 +5,7 @@ import type { ComputerView } from './ui/computer.ts'
 import { DirectoryService } from './services/directory-service.ts'
 import { SearchService } from './services/search-service.ts'
 import { TagLocationService } from './services/tag-location-service.ts'
-import { isTagUri, tagFromUri } from './services/tags-service.ts'
+import { isTagUri, tagFromUri, HIDDEN_TAGS_NAME } from './services/tags-service.ts'
 import { createTagsView } from './ui/tags-view.ts'
 import type { TagsView } from './ui/tags-view.ts'
 import { COMPUTER_URI } from './services/places-service.ts'
@@ -66,15 +66,10 @@ export class Pane {
     this.computer.onActivate = file => this.navigate(file)
     this.computer.onContextMenu = (file, w, x, y) => this.onDriveContextMenu(file, w, x, y)
 
-    /* The Tags overview (tag:///) also lives in the stack. Activating a file
-     * there opens its folder with the file revealed. */
+    /* The Tags overview (tag:/// and tag:///,hidden) also lives in the stack.
+     * Rows/buttons navigate this pane (a tag's location, the hidden page). */
     this.tagsView = createTagsView()
-    this.tagsView.onOpenEntry = file => {
-      const parent = file.getParent()
-      if (!parent) return
-      this.navigate(parent)
-      this.view.setPendingReveal([file.getUri()])
-    }
+    this.tagsView.onNavigate = file => this.navigate(file)
 
     this.paneStack = new Gtk.Stack()
     this.paneStack.addNamed(this.view.widget, 'files')
@@ -176,7 +171,8 @@ export class Pane {
   reload(): void {
     if (this.isComputer) this.computer.refresh()
     else if (this.isTagLocation) {
-      if (tagFromUri(this.location.getUri()) == null) this.tagsView.refresh()
+      const tag = tagFromUri(this.location.getUri())
+      if (tag == null || tag === HIDDEN_TAGS_NAME) this.tagsView.refresh()
       else this.tagLoc.load(this.location)
     }
     else this.isShowingSearch ? this._runSearch() : this.dir.load(this.location)
@@ -200,9 +196,11 @@ export class Pane {
       this.paneStack.setVisibleChildName('computer')
     } else if (isTagUri(uri)) {
       this.dir.cancel()   /* stop the previous folder's monitor/enumeration */
-      if (tagFromUri(uri) == null) {
-        /* The root (tag:///) is the Tags overview page. */
+      const tag = tagFromUri(uri)
+      if (tag == null || tag === HIDDEN_TAGS_NAME) {
+        /* The root (tag:///) is the Tags overview; ,hidden its hidden page. */
         this.tagLoc.cancel()
+        this.tagsView.setMode(tag === HIDDEN_TAGS_NAME)
         this.tagsView.refresh()
         this.paneStack.setVisibleChildName('tags')
       } else {

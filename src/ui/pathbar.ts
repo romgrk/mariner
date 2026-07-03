@@ -6,7 +6,7 @@ import Pango from 'gi:Pango-1.0'
 import { HOME } from '../core/format.ts'
 import { archiveName } from '../core/archive-uri.ts'
 import { volumeMonitor } from '../services/volume-monitor.ts'
-import { tagFromUri } from '../services/tags-service.ts'
+import { tagFromUri, HIDDEN_TAGS_NAME } from '../services/tags-service.ts'
 import { tagIconName } from './tag-icons.ts'
 import type { GFile } from '../core/types.ts'
 
@@ -101,12 +101,13 @@ function classify(file: GFile): Crumb {
   if (scheme === 'starred')
     return { type: 'starred', name: 'Starred', iconName: 'starred-symbolic', gicon: null, isRoot: true }
   /* Tag locations: the root crumb is "Tags"; a specific tag renders as a normal
-   * child crumb ("Tags / Pink") with its name decoded from the URI. */
+   * child crumb ("Tags / Pink") with its name decoded from the URI. The
+   * reserved ,hidden child is the Hidden Tags page. */
   if (scheme === 'tag') {
     const tag = tagFromUri(file.getUri())
     if (tag == null)
       return { type: 'tag', name: 'Tags', iconName: tagIconName(), gicon: null, isRoot: true }
-    return { type: 'normal', name: tag, iconName: null, gicon: null, isRoot: false }
+    return { type: 'normal', name: tag === HIDDEN_TAGS_NAME ? 'Hidden Tags' : tag, iconName: null, gicon: null, isRoot: false }
   }
 
   const mount = mountForRoot(file)
