@@ -19,7 +19,7 @@ Mariner is a GTK4 + libadwaita file manager for the GNOME desktop. It
 drives the same widgets as [GNOME Files](https://gitlab.gnome.org/GNOME/nautilus)
 (Nautilus), so it looks and behaves like home — then adds type-to-select find,
 dual-pane browsing, a Quick Look preview, a command palette, full-text search,
-and a built-in disk analyzer on top.
+file tags, and a built-in disk analyzer on top.
 
 <p align="center">
   <img src="docs/hero.png" alt="Mariner main window" width="820">
@@ -100,6 +100,23 @@ a colourful sunburst chart. Click a wedge to drill in. No separate app to instal
   <!-- screenshot placeholder — drop docs/disk-usage.png here -->
 </p>
 
+### Tags
+
+Give files colored tags straight from the right-click menu, then pull up
+everything with that label from the sidebar — wherever the files actually live.
+Tags are stored in the standard `user.xdg.tags` extended attribute, so they
+follow files when you copy them and stay compatible with KDE Dolphin. Not a
+tags person? A single switch in Preferences hides them everywhere — your tag
+data stays intact.
+
+The design follows the GNOME Design team's
+[tags whiteboard](https://gitlab.gnome.org/Teams/Design/whiteboards/-/work_items/332) —
+credit to them for the mockups this feature is based on.
+
+<p align="center">
+  <img src="docs/tags.png" alt="Tags overview page" width="820">
+</p>
+
 ### Custom actions
 
 Add your own commands to the right-click menu — open a project in your editor,
@@ -127,6 +144,11 @@ Nautilus doesn't (or does differently):
 - **Frecency folder jumping** — recent folders ranked by frequency × recency.
 - **Full-text search** — grep inside files via ripgrep, no indexing daemon.
 - **Disk usage analyzer** — interactive sunburst chart, built in.
+- **Tags** — color-coded labels on files, browsable from the sidebar; stored as
+  `user.xdg.tags` xattrs, interoperable with KDE Dolphin.
+- **Clutter-free by choice** — hide any sidebar section (Recent, Trash, Tags,
+  Devices…) from Preferences, or switch tags off entirely, so the window shows
+  only what you actually use.
 - **Custom actions** — add your own scripts to the context menu, matched to the
   selection by type, extension, or count.
 - **Computer view** — every drive and partition with a live capacity bar.
@@ -191,6 +213,26 @@ This sets the `inode/directory` MIME default and installs a per-user
 `org.freedesktop.FileManager1` service (no root, no conflict with an installed
 Nautilus). See [docs/default-file-manager.md](docs/default-file-manager.md) for
 what it does and how to set it up by hand.
+
+### npm / pnpm (global)
+
+Requires **Node ≥ 22.18** and the GTK runtime libraries (**GTK ≥ 4.16**,
+**libadwaita ≥ 1.5**, gobject-introspection). Prebuilt node-gtk binaries cover
+x64 Linux on Node 22 / 24 / 26; other setups build node-gtk from source and
+also need a C toolchain and the GTK / GObject-Introspection headers.
+
+```sh
+npm install -g github:romgrk/mariner    # or: pnpm add -g github:romgrk/mariner
+
+mariner ~/Documents                     # run it
+mariner --install-desktop-entry         # application menu entry + icon
+```
+
+`--install-desktop-entry` writes the desktop entry and icons under
+`~/.local/share`, with `Exec=` pointing at this install's absolute paths (npm
+global bin dirs are rarely on the desktop session's `PATH`). Run
+`mariner --uninstall-desktop-entry` to remove them again — ideally before
+uninstalling the package itself.
 
 ### From source
 
