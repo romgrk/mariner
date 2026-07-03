@@ -47,14 +47,17 @@ function droppedString(value: any): string | null {
 export function createTagsView(): TagsView {
   let hiddenMode = false
 
+  const titleIcon = new Gtk.Image({ iconName: tagIconName() })
   const title = new Gtk.Label({ xalign: 0, hexpand: true })
   title.addCssClass('title-2')
 
   const hiddenBtn = new Gtk.Button({ label: 'Hidden Tags' })
-  const newBtn = new Gtk.Button({ label: 'New Tag…' })
+  const newBtn = new Gtk.Button()
+  newBtn.setChild(new Adw.ButtonContent({ iconName: 'list-add-symbolic', label: 'New Tag…' }))
   newBtn.addCssClass('suggested-action')
 
   const header = new Gtk.Box({ orientation: Gtk.Orientation.HORIZONTAL, spacing: 8 })
+  header.append(titleIcon)
   header.append(title)
   header.append(hiddenBtn)
   header.append(newBtn)
