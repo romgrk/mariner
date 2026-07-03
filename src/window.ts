@@ -20,7 +20,7 @@ import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from '
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
-import { newTagDialog } from './ui/new-tag-dialog.ts'
+import { newTagDialog, editTagDialog, deleteTagDialog } from './ui/new-tag-dialog.ts'
 import { tagIconName } from './ui/tag-icons.ts'
 import { customMenuSupported, buildTagDotsRow, buildTagListRows, TAG_DOTS_FIT } from './ui/tag-menu.ts'
 import type { TagMenuItem, TagMenuContext } from './ui/context-menu.ts'
@@ -67,6 +67,7 @@ export class AppWindow {
   _tagActionCount = 0
   _ctxPopover: any = null
   _pendingTagsChanged = false
+  _ctxTag: string | null = null
   _quicklook: QuickLook | null = null
   _palette: CommandPalette | null = null
   _actions: Record<string, any> = {}
@@ -144,6 +145,7 @@ export class AppWindow {
       (file: GFile) => this.navigate(file),
       (file: GFile, widget: any, x: number, y: number) => this.showBookmarkMenu(file, widget, x, y),
       (id: string) => this.prefs.sidebarHidden.includes(id),
+      (name: string, widget: any, x: number, y: number) => this.showTagMenu(name, widget, x, y),
     )
     const sidebarView = new Adw.ToolbarView()
     const sidebarHeader = new Adw.HeaderBar()
@@ -385,6 +387,28 @@ export class AppWindow {
     add('manage-tags', () => this._manageTags())
     add('tag-new', () => this._newTag())
     add('tag-clear', () => this._removeAllTags())
+
+    /* Sidebar tag context menu — these act on `_ctxTag`, set when it opens. */
+    add('tag-edit', () => {
+      const tag = this._ctxTag ? tagsService.getTag(this._ctxTag) : null
+      if (tag) editTagDialog(this.window, tag)
+    })
+    add('tag-hide', () => { if (this._ctxTag) tagsService.setTagHidden(this._ctxTag, true) })
+    add('tag-delete', () => { if (this._ctxTag) deleteTagDialog(this.window, this._ctxTag) })
+  }
+
+  /* Context menu for a tag row in the sidebar (mirrors the Tags page's ⋮). */
+  showTagMenu(name: string, widget: any, x: number, y: number): void {
+    this._ctxTag = name
+    const menu = Gio.Menu.new()
+    const edit = Gio.Menu.new()
+    edit.append('Edit…', 'win.tag-edit')
+    edit.append('Hide', 'win.tag-hide')
+    menu.appendSection(null, edit)
+    const del = Gio.Menu.new()
+    del.append('Delete', 'win.tag-delete')
+    menu.appendSection(null, del)
+    this._popupMenu(menu, widget, x, y)
   }
 
   /* ---- Tags ---- */

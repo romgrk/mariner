@@ -6,8 +6,7 @@ import GObject from 'gi:GObject-2.0'
 import { tagsService, tagUri, HIDDEN_TAGS_URI } from '../services/tags-service.ts'
 import type { Tag } from '../services/tags-service.ts'
 import { fileForUri } from '../core/gio.ts'
-import { confirm } from './dialogs.ts'
-import { newTagDialog, editTagDialog, swatchBox } from './new-tag-dialog.ts'
+import { newTagDialog, editTagDialog, deleteTagDialog, swatchBox } from './new-tag-dialog.ts'
 import { makeDropTarget } from './dnd.ts'
 import { tagIconName, dragHandle } from './tag-icons.ts'
 import type { GFile } from '../core/types.ts'
@@ -131,7 +130,7 @@ export function createTagsView(): TagsView {
     chevron.addCssClass('dim-label')
     r.addSuffix(chevron)
     r.addSuffix(new Gtk.Separator({ orientation: Gtk.Orientation.VERTICAL, marginTop: 14, marginBottom: 14 }))
-    r.addSuffix(rowMenu(tag, count))
+    r.addSuffix(rowMenu(tag))
 
     /* Drop files on a row to tag them. */
     r.addController(makeDropTarget(files => tagsService.addTag(files, tag.name)))
@@ -140,7 +139,7 @@ export function createTagsView(): TagsView {
   }
 
   /* The "⋮" menu: Edit (name + color in one dialog), Hide/Unhide, Delete. */
-  function rowMenu(tag: Tag, count: number): any {
+  function rowMenu(tag: Tag): any {
     const menu = new Gtk.MenuButton({ iconName: 'view-more-symbolic', valign: Gtk.Align.CENTER })
     menu.addCssClass('flat')
     const pop = new Gtk.Popover()
@@ -157,17 +156,7 @@ export function createTagsView(): TagsView {
 
     item('Edit…', () => editTagDialog(scroller, tag))
     item(tag.hidden ? 'Unhide' : 'Hide', () => tagsService.setTagHidden(tag.name, !tag.hidden))
-    item('Delete', async () => {
-      if (count > 0) {
-        const ok = await confirm(scroller, {
-          heading: `Delete the tag “${tag.name}”?`,
-          body: `It will be removed from ${count} file${count === 1 ? '' : 's'}. The files themselves are not affected.`,
-          okLabel: 'Delete',
-        })
-        if (!ok) return
-      }
-      tagsService.deleteTag(tag.name)
-    }, true)
+    item('Delete', () => deleteTagDialog(scroller, tag.name), true)
 
     pop.setChild(box)
     menu.setPopover(pop)

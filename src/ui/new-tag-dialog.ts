@@ -2,6 +2,7 @@ import Gtk from 'gi:Gtk-4.0'
 import Adw from 'gi:Adw-1'
 import { tagsService, validateTagName, TAG_COLORS } from '../services/tags-service.ts'
 import type { Tag } from '../services/tags-service.ts'
+import { confirm } from './dialogs.ts'
 
 /* Shared swatch widget: a small colored circle (or a dashed outline for "no
  * color" = text tag). Used by the tag dialogs and the Tags page. */
@@ -112,4 +113,19 @@ export async function editTagDialog(parent: any, tag: Tag): Promise<void> {
   if (!res) return
   if (res.color !== tag.color) tagsService.setTagColor(tag.name, res.color)
   if (res.name !== tag.name) tagsService.renameTag(tag.name, res.name)
+}
+
+/* Delete a tag, confirming first when files carry it. Shared by the Tags
+ * page's ⋮ menu and the sidebar tag context menu. */
+export async function deleteTagDialog(parent: any, name: string): Promise<void> {
+  const count = tagsService.counts().get(name) ?? 0
+  if (count > 0) {
+    const ok = await confirm(parent, {
+      heading: `Delete the tag “${name}”?`,
+      body: `It will be removed from ${count} file${count === 1 ? '' : 's'}. The files themselves are not affected.`,
+      okLabel: 'Delete',
+    })
+    if (!ok) return
+  }
+  tagsService.deleteTag(name)
 }

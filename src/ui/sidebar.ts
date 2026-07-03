@@ -46,6 +46,7 @@ export function createSidebar(
   onNavigate: (file: GFile) => void,
   onBookmarkMenu: (file: GFile, widget: any, x: number, y: number) => void = () => {},
   isHidden: (id: string) => boolean = () => false,
+  onTagMenu: (name: string, widget: any, x: number, y: number) => void = () => {},
 ): Sidebar {
   const list = new Gtk.ListBox({ selectionMode: Gtk.SelectionMode.SINGLE })
   list.addCssClass('navigation-sidebar')
@@ -177,6 +178,14 @@ export function createSidebar(
 
       /* Drop files on a tag row to apply that tag. */
       row.addController(makeDropTarget(files => tagsService.addTag(files, tag.name)))
+
+      /* Right-click → Edit / Hide / Delete (like the Tags page's ⋮ menu). */
+      const secondary = new Gtk.GestureClick({ button: 3 })
+      secondary.on('pressed', (...a: any[]) => {
+        const [x, y] = a.slice(-2)
+        onTagMenu(tag.name, row, x, y)
+      })
+      row.addController(secondary)
 
       list.append(row)
       rows.push({ row, uri: file.getUri() })
