@@ -5,16 +5,17 @@ This is the single source of truth for picking the project up — read it before
 changing code. User-facing docs live in `README.md`.
 
 Status: nautilus parity reached, plus net-new features (dual pane, Quick Look,
-command palette, ripgrep content search, disk-usage sunburst, batch rename). See §2.
+command palette, ripgrep content search, disk-usage sunburst, batch rename,
+in-place archive browsing, FileManager1 "Show in folder"). See §2.
 
 ---
 
 ## 1. Run & environment
 
 ```sh
-npm install        # links local node-gtk; installs typescript + @types/node
-npm start          # = node --import node-gtk/register src/main.ts
-npm run typecheck  # = tsc --noEmit  (needs npm install first)
+pnpm install       # installs typescript + @types/node (node-gtk stays a local symlink)
+pnpm start         # = node --import node-gtk/register src/main.ts
+pnpm typecheck     # = tsc --noEmit  (needs pnpm install first)
 ```
 
 - **TypeScript, no build step.** Node strips `.ts` types at load; imports use
@@ -22,11 +23,13 @@ npm run typecheck  # = tsc --noEmit  (needs npm install first)
   (`erasableSyntaxOnly`, `verbatimModuleSyntax`): no `enum`/`namespace`/parameter
   properties, and `import type` (or inline `import { type X }`) for type-only
   imports — else Node keeps the import and crashes on the missing runtime export.
-- **Node 22** (≥ 22.18). node-gtk does not build on Node 24+.
+- **Node 26** (system default). `node_modules/node-gtk` is a symlink to the
+  local `~/worktrees/node-gtk-lazy` build (node-v147 ABI only — do **not**
+  switch to Node 22, that build has no v127 binding). Upstream node-gtk 4.x
+  does not run on Node 24+; the lazy branch is what makes 26 work.
 - Requires **GTK ≥ 4.16** and **libadwaita ≥ 1.5** with their typelibs
   (`Gtk-4.0`, `Adw-1`); verified on GTK 4.22.4 / libadwaita 1.9.1.
-- `node_modules/node-gtk` is a symlink to the local `../node-gtk` dev build.
-  `src/gi.d.ts` declares `gi:` modules as `any` (no generated GI types).
+- `src/gi.d.ts` declares `gi:` modules as `any` (no generated GI types).
 
 ---
 
@@ -50,15 +53,28 @@ Implemented and verified (headless GSK renders per §5 + service-level tests):
   (`Gio.VolumeMonitor`).
 - **Search** (Ctrl+F) — recursive, out-of-process (`workers/search-worker.ts`),
   breadth-first; streams matches over a GLib-serviced pipe, resolves metadata
-  async, appends incrementally. Funnel filter (category + date window); a
+  async. Results are **batched** (service coalesces 50 ms; view applies one
+  splice) — a ~10k-match search stalls the main loop ≤ ~200 ms. A floating
+  "Searching…" pill (spinner + Cancel, 200 ms grace) shows while streaming;
+  Enter moves focus to the results. Funnel filter (category + date window); a
   **Contents** switch does full-text via `ripgrep`.
-- **Typeahead** — plain typing selects the first prefix→substring match and
-  scrolls to it; a bottom-right floating pill shows the query; resets after ~1s.
+- **Typeahead** — plain typing fuzzy-ranks rows (fzy scorer with `ignoreTail`,
+  so equally-good matches keep view/sort order) and selects the top match; a
+  bottom-right floating pill shows the query; resets after ~1s.
+- **Selection tools** — Select Items Matching (Ctrl+S, `*`/`?` glob, replaces
+  the selection) and a nautilus-style selection summary in the floating pill
+  ("12 items selected (348 MB)"; typeahead query wins while typing).
 - **Operations** (async, time-sliced, progress + toasts) — new folder, rename,
   copy, cut/paste (move), trash, delete, empty trash, symlink, restore-from-trash;
-  recursive with conflict resolution (Replace / Skip / Keep Both, apply-to-all)
-  and a header **operations queue** (per-op progress + cancel). **Undo/redo**
-  (Ctrl+Z/Y) of all of it.
+  recursive with conflict resolution (Replace / Skip / Keep Both, apply-to-all;
+  directory "Replace" is a real recursive **merge**) and a header **operations
+  queue** (per-op progress + **pause/resume** + cancel; completed ops linger as
+  ✓ until "Clear"). Real percentages for cross-fs file copies (chunked stream)
+  and zip/7z/plain-tar extraction (entry count). **Undo/redo** (Ctrl+Z/Y) of
+  all of it (merges excepted — see §6).
+- **Trash extras** — a Trash-only "Original Location" column
+  (`trash::orig-path`) and a "Restore to…" action (context menu + palette)
+  that restores the selection into a picked folder via `Gtk.FileDialog`.
 - **Quick Look** (Space) — floating preview paging the view's entries: images
   (`Gtk.Picture`), text/code (bounded async read → monospace), audio/video
   (`Gtk.Video`), else a metadata card.
@@ -69,7 +85,18 @@ Implemented and verified (headless GSK renders per §5 + service-level tests):
   (`Gtk.DrawingArea` + cairo): hover highlights a wedge + lineage, click a folder
   wedge drills in.
 - **Batch rename** — multi-select find/replace or numbered, live preview.
-- **Archive** — Extract Here / Compress… (zip/tar.*/7z/rar via CLI tools).
+- **Archive** — Extract Here / Compress… (zip/tar.*/7z/rar via CLI tools);
+  double-click **browses the archive in place** as a virtual folder via gvfs
+  `archive://` (`core/archive-uri.ts` builds/decodes the doubly-escaped URI;
+  DirectoryService mounts on demand on NOT_MOUNTED and retries once; Up from
+  the archive root exits it; archive URIs stay out of recent-folders).
+- **FileManager1** — implements `org.freedesktop.FileManager1` ("Show in
+  folder" from browsers, `gio open`, download notifications). node-gtk can't
+  host D-Bus objects (§4), so a small **gjs translator** (`data/filemanager1.js`)
+  owns the bus name and forwards to `mariner --select` / `--properties`;
+  `FileView.setPendingReveal` selects the URIs as the folder streams in.
+  Becoming the default is opt-in via `mariner-set-default` (per-user service
+  override + `inode/directory` MIME; see `docs/default-file-manager.md`).
 - **Extras** — Open With…, Open in New Tab, Open in Terminal, Set as Wallpaper,
   Create Link. User-defined **custom actions** in the context menu live on the
   `feat/custom-user-actions` branch (documented in the README, not yet merged).
@@ -107,12 +134,19 @@ src/
     process-stream.ts    ProcessStream: line-streaming over Gio.Subprocess (opt. cwd)
     measure.ts           async recursive disk-usage walk (node fs) for Properties
     disk-usage.ts        scanTree(): nested size tree to a depth (sunburst)
-    fuzzy-match.ts       fzy subsequence scorer (vendored from ~/src/zym)
+    drives.ts            mounted-partition list from /proc/mounts + statfs (Computer)
+    glob.ts              * / ? glob matcher for Select Items Matching (Ctrl+S)
+    archive-uri.ts       build/decode gvfs archive:// root URIs (double escaping)
+    fuzzy-match.ts       fzy subsequence scorer (vendored from ~/src/zym); ignoreTail
+                         option drops the shorter-is-better tail penalty (typeahead)
     emitter.ts           re-exports Node EventEmitter
     types.ts             Entry, Place, Prefs, ViewConfig, SortKey, SearchFilter, CopyItem, Op*
   services/              one responsibility each; emit events; GTK-free
-    directory-service.ts   load(dir): loading|items|ready|error|invalidated
-    search-service.ts      search(dir,q,{filter}): name worker | ripgrep (filter.contents)
+    directory-service.ts   load(dir): loading|items|ready|error|invalidated;
+                           mounts archive:// locations on demand
+    search-service.ts      search(dir,q,{filter}): name worker | ripgrep (filter.contents);
+                           coalesces resolved matches into 50ms batches
+    volume-monitor.ts      centralized Gio.VolumeMonitor access (first get() is sync)
     file-operations.ts     copy/move/delete/trash/rename/newFolder/link/restore/emptyTrash;
                            per-op id begin|progress|done|error; cancel(id)
     undo-service.ts        undo/redo stack of inverse closures
@@ -126,8 +160,10 @@ src/
   workers/
     search-worker.ts       pure-node breadth-first walker -> JSON path per line on stdout
   ui/                    widgets only
-    file-view.ts           grid+list+state stack; typeahead; Space→preview; focus-in; drop
-    floating-bar.ts        overlay status pill (typeahead indicator)
+    file-view.ts           grid+list+state stack; typeahead; Space→preview; focus-in;
+                           drop; bulk splice insert; setPendingReveal (FileManager1)
+    floating-bar.ts        overlay status pill: typeahead query, selection summary,
+                           search spinner+Cancel (search > typeahead > selection)
     cells.ts               grid/column cell factories (metaColumn from ColumnDef); thumbnails; drag source
     column-chooser.ts      Visible Columns dialog (toggle/reorder)
     sidebar.ts             places view (over places-service)
@@ -140,7 +176,8 @@ src/
     operations-queue.ts    header button + popover: per-op progress + cancel
     progress-ring.ts       circular progress paintable
     preview.ts             QuickLook window (preview-renderers.ts renders per type)
-    sunburst.ts            SunburstView (DrawingArea + cairo); disk-usage.ts hosts it
+    sunburst.ts            SunburstView (DrawingArea + cairo); ui/disk-usage.ts hosts it
+    computer.ts            Computer view (partitions + usage bars over core/drives.ts)
     shortcuts.ts           Adw.ShortcutsDialog (data-driven)
     preferences.ts         Adw.PreferencesDialog over prefs
     batch-rename.ts        multi-select rename + live preview
@@ -153,7 +190,10 @@ src/
   tab.ts                 Tab: hosts 1–2 Panes; tracks active pane; delegates to it
   window.ts              AppWindow: shell assembly, GAction wiring, ops queue, conflicts
   accels.ts              ACCELS table + formatAccel/accelHint
-  main.ts                Adw.Application, accelerators, GLib.MainLoop lifecycle
+  main.ts                Adw.Application, accelerators, GLib.MainLoop lifecycle;
+                         CLI modes: --select / --properties (FileManager1 reveal)
+bin/mariner.js           installed launcher (abs-path node-gtk/register + main.ts)
+data/filemanager1.js     gjs D-Bus translator hosting org.freedesktop.FileManager1
 ```
 
 ### Data flow
@@ -182,6 +222,10 @@ src/
   `prefs.sortKey`.
 - `FileView` keeps the full unfiltered dataset in `this.all`, so toggling
   hidden/sort `rebuild()`s without re-listing.
+- **Never insert per-item into the bound `Gio.ListStore` for large batches** —
+  every `insert` fires an `items-changed` the selection model + both views
+  process (~14 s for 20k rows). Merge into the sorted array and apply **one
+  `splice(0, n, merged)`** (~640× faster); selection is re-applied by key.
 - **Persisted as JSON under the user config dir**: window geometry
   (`window-state.ts`), recent folders (`recent-folders.ts`), and view mode + list
   columns (`view-prefs.ts`). The rest of `Prefs` — sort key/direction,
@@ -209,15 +253,29 @@ src/
 - **Async-ready callbacks get `(sourceObject, GAsyncResult, userData)`** — the
   result is `args[1]`.
 - **`Gio.DataInputStream.readLineFinish` returns `[bytes, len]`**, bytes a plain
-  `number[]` (decode with `Buffer.from`); **EOF is an empty array, not null** —
-  treat zero-length as EOF and never emit blank protocol lines. `ProcessStream`
-  finalizes on stdout+stderr EOF (`waitAsync` was unreliable).
+  `number[]` (decode with `Buffer.from`); **EOF is an empty array, not null**,
+  so `readLine*` cannot distinguish a blank line from EOF — never emit blank
+  protocol lines, or use `ProcessStream`'s blank-line-safe raw reader (read
+  raw bytes, split on `\n`). `ProcessStream` finalizes on stdout+stderr EOF
+  (`waitAsync` was unreliable).
 - **`GLib.getMonotonicTime()` returns a BigInt** — `Number(...)` before math.
+  Same for other guint64 getters: **`Gtk.Bitset.getSize()` /
+  `SelectionModel.getSize()`** — `=== 0` never matches without `Number(...)`.
+- **`Gtk.SelectionModel.setSelection` mis-marshals** — loop `selectItem`
+  instead. **`Gtk.ListScrollFlags.SELECT` collapses a multi-selection** when
+  scrolling — use `FOCUS`.
+- **node-gtk cannot HOST a D-Bus object** — `registerObject` aborts,
+  `registerObjectWithClosures` is absent, `addFilter` double-frees (its
+  GClosure marshaller is signal-only). Host interfaces in a **gjs helper**
+  (`data/filemanager1.js`); outbound/client-side D-Bus calls work fine.
 - **GType**: no `.$gtype`; use `GObject.typeFromName('GFileInfo')` (or
   `instance.__gtype__`), e.g. for `Gio.ListStore.new(type)`. Build vfunc widgets
   by subclassing then `new` (registers the GType); prefer
   `Gtk.SignalListItemFactory` over `BuilderListItemFactory`.
 - **`Adw.Breakpoint.addSetter`** needs a boxed `GObject.Value`, not a raw JS `true`.
+- **`Adw.ActionRow` renders its subtitle as Pango markup** — escape any
+  file-derived string (`&`, `<`, `>`) or the row renders blank (not
+  node-gtk-specific, but it bit Properties).
 - **`GtkListBox.setHeaderFunc/setHeader` mis-marshals** — draw sidebar group
   dividers as non-focusable separator rows instead.
 - **Event phase** — the grid/column view claims Space/arrows at the target phase,
@@ -296,6 +354,10 @@ criticals per GSK snapshot are expected — present on HEAD too.)
 - **Disk-usage sunburst** shows 5 rings from the current root (deeper contents
   still count toward sizes); local paths only; redraws on each incremental scan.
 - **Search** matches name only (category/date/contents filters apply on top).
+- **Archive browsing** is read-only (gvfs `archive://` backend) and needs
+  `gvfsd-archive`; editing inside an archive means Extract → edit → Compress.
+- **FileManager1** needs `gjs` at runtime for the translator service; Mariner
+  never becomes the default silently — only via `mariner-set-default`.
 - **Command palette** jumps only to recently-visited folders (no arbitrary-path
   completion or file search); recent folders persist in `recent-folders.json`,
   never pruned below 200.
@@ -309,7 +371,7 @@ criticals per GSK snapshot are expected — present on HEAD too.)
   so they're near-instant); zip/7z/plain-tar extraction shows a real entry-count
   percentage. Compressed-tar/rar extraction and all compression still **pulse**
   (a cheap total isn't available).
-- `tsc` isn't vendored — `npm install` before `npm run typecheck`; the app runs
+- `tsc` isn't vendored — `pnpm install` before `pnpm typecheck`; the app runs
   without it.
 
 ---
@@ -337,3 +399,7 @@ Parity with nautilus is reached; these are net-new draws, none implemented:
   SFTP/SMB), **starred files** — see README "Not yet supported".
 - **Diff / compare** two selected files (leans on dual pane; shells out).
 - **PDF / markdown rendering** in Quick Look (markdown is treated as text today).
+
+Planned refactor (deferred until in-flight feature branches land, to avoid
+multi-way rebases): split the ~1000-line `window.ts` god object into
+palette-items + a file-ops controller.
