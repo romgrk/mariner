@@ -28,6 +28,8 @@ export interface CommandPanel {
   /* Launch `command` in `cwd`; onDone fires once when it exits, is stopped, or
    * fails to spawn (reload the launching tab — it likely changed). */
   run: (command: string, cwd: string, onDone: () => void) => void
+  /* Same as the ✕ button: stop the command if running, hide the panel. */
+  close: () => void
 }
 
 /* Reveal a still-quiet command after this long, so slow ones have a visible
@@ -262,5 +264,5 @@ export function createCommandPanel(onToast: (message: string) => void): CommandP
     s.start()
   }
 
-  return { widget: revealer, run }
+  return { widget: revealer, run, close }
 }

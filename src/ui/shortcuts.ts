@@ -41,6 +41,7 @@ const SECTIONS: Section[] = [
     ['Refresh View', 'F5 <Primary>r'],
     ['Show/Hide Hidden Files', '<Primary>h'],
     ['Show/Hide Sidebar', 'F9'],
+    ['Dismiss Command Output', 'Escape'],
   ] },
   { title: 'Navigation', items: [
     ['Go Back', '<Alt>Left'],

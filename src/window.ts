@@ -123,6 +123,23 @@ export class AppWindow {
         if (trigger) controller.addShortcut(new Gtk.Shortcut({ trigger, action: Gtk.NamedAction.new(action) }))
       }
     this.window.addController(controller)
+
+    /* Escape fallback: dismiss the `!command` output panel. Deliberately an
+     * EventControllerKey, NOT an ACCELS entry — accels are also registered
+     * app-level and their activation steals Escape from a focused location/
+     * search entry before the entry's own controller sees it. A bubble-phase
+     * key controller only fires once the focused widget chain declined the
+     * event, so entries keep their Escape and this catches it from the view. */
+    const esc = new Gtk.EventControllerKey()
+    esc.setPropagationPhase(Gtk.PropagationPhase.BUBBLE)
+    esc.on('key-pressed', (...a: any[]) => {
+      if (a[0] === Gdk.KEY_Escape && this.commandPanel.widget.getRevealChild()) {
+        this.commandPanel.close()
+        return true
+      }
+      return false
+    })
+    this.window.addController(esc)
   }
 
   /* ---- UI ---- */
