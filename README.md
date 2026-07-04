@@ -85,6 +85,19 @@ the top, so what you want is usually the first hit.
   <!-- screenshot placeholder — drop docs/command-palette.png here -->
 </p>
 
+### Command runner
+
+Type `!` in the location bar (**Ctrl+L**) to run a shell command right in the
+folder you're looking at — `git status`, unzip something, a quick `convert`.
+Output streams into a panel at the bottom of the window (**Escape** closes it);
+a command that finishes quietly is just a toast, and the view refreshes by
+itself. Prefer a real terminal? `!!command` runs it in your terminal app and
+keeps the window open afterwards — and a bare `!!` simply opens a terminal
+here. Which terminal that is (also used by **Open in Terminal**) is
+configurable in Preferences.
+
+https://github.com/user-attachments/assets/dacec275-0a2b-4e5b-8ab8-3a60401cb881
+
 ### Full-text search
 
 Search a whole folder tree, with matches appearing as they're found. Turn on
@@ -146,8 +159,14 @@ Nautilus doesn't (or does differently):
 - **Quick Look** — Space-to-preview for images, audio/video, text and code.
 - **Command palette** — Ctrl+P to run any action or jump to a folder.
 - **Frecency folder jumping** — recent folders ranked by frequency × recency.
+- **Command runner** — `!command` in the location bar runs it in the current
+  folder with output in a bottom panel; `!!command` runs it in your terminal.
 - **Full-text search** — grep inside files via ripgrep, no indexing daemon.
 - **Disk usage analyzer** — interactive sunburst chart, built in.
+- **Folder sizes in the list view** — opt-in "calculate all sizes": the Size
+  column shows real folder totals, cached so revisits are instant.
+- **Configurable terminal** — Open in Terminal and `!!` spawn the emulator of
+  your choice via a command template in Preferences.
 - **Tags** — color-coded labels on files, browsable from the sidebar; stored as
   `user.xdg.tags` xattrs, interoperable with KDE Dolphin.
 - **Clutter-free by choice** — hide any sidebar section (Recent, Trash, Tags,
@@ -270,7 +289,7 @@ knowing up front:
 | **Space**               | Quick Look preview                             |
 | **F3**                  | Toggle split view                              |
 | **F6** / **Alt+W**      | Focus the other pane                           |
-| **Ctrl+L**              | Type a path                                    |
+| **Ctrl+L**              | Type a path — or a `!` shell command           |
 | **Ctrl+1** / **Ctrl+2** | List / grid view                               |
 | **F2**                  | Rename (batch rename with a multi-selection)   |
 
