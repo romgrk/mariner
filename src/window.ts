@@ -21,6 +21,7 @@ import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from '
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
+import { dirSizes } from './services/dir-size-service.ts'
 import { newTagDialog, editTagDialog, deleteTagDialog } from './ui/new-tag-dialog.ts'
 import { tagIconName } from './ui/tag-icons.ts'
 import { customMenuSupported, buildTagDotsRow, buildTagListRows, TAG_DOTS_FIT } from './ui/tag-menu.ts'
@@ -92,6 +93,8 @@ export class AppWindow {
 
   constructor(app: any, startFile: GFile) {
     this.app = app
+    dirSizes.enabled = this.prefs.dirSizes
+    dirSizes.ttlMs = this.prefs.dirSizesTtl * 60_000
     this._buildUI()
     this._buildActions()
     this._installShortcuts()
@@ -265,6 +268,8 @@ export class AppWindow {
       if (this._ctxPopover) { this._pendingTagsChanged = true; return }
       this._applyTagsChanged()
     })
+    /* Folder-size results repaint their cells in place (see cells.ts) — no
+     * refreshCells here: rebuilding every row widget per wave janks the UI. */
   }
 
   _applyTagsChanged(): void {
@@ -274,6 +279,24 @@ export class AppWindow {
         if (p.location && isTagUri(p.location.getUri())) p.reload()
       }
     }
+  }
+
+  /* Folder-sizes preference (see dir-size-service.ts). Toggling on queues the
+   * visible listings; toggling off drops the queue. Either way every pane
+   * repaints so Size cells gain/lose their folder values immediately. */
+  _setDirSizesEnabled(v: boolean): void {
+    this.prefs.dirSizes = v
+    dirSizes.enabled = v
+    saveViewPrefs(this.prefs)
+    if (v) { for (const p of this.activeTab?.panes ?? []) p.queueDirSizes() }
+    else dirSizes.clear()
+    for (const tab of this.tabs) for (const p of tab.panes) p.view.refreshCells()
+  }
+
+  _setDirSizesTtl(minutes: number): void {
+    this.prefs.dirSizesTtl = minutes
+    dirSizes.ttlMs = minutes * 60_000
+    saveViewPrefs(this.prefs)
   }
 
   /* ---- Actions ---- */
@@ -816,6 +839,8 @@ export class AppWindow {
     this._activeTab = tab
     if (this.searching) this._setSearch(false)
     this.refreshChrome(tab)
+    /* Point the folder-size queue at what's now on screen. */
+    for (const p of tab.panes) p.queueDirSizes()
   }
 
   _onClosePage(page: any): boolean {

@@ -58,6 +58,10 @@ export interface Prefs {
   columns: ColumnConfig[]
   /* Ids of sidebar items/sections the user hid (see SIDEBAR_ITEMS). */
   sidebarHidden: string[]
+  /* Opt-in recursive folder sizes in the list view's Size column. */
+  dirSizes: boolean
+  /* Minutes before a cached folder size goes stale and is re-scanned. */
+  dirSizesTtl: number
 }
 
 /* What the FileView needs to filter + order a dataset. */

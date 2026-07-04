@@ -2,6 +2,7 @@ import Gtk from 'gi:Gtk-4.0'
 import Pango from 'gi:Pango-1.0'
 import { thumbnails } from '../services/thumbnail-service.ts'
 import { tagsService } from '../services/tags-service.ts'
+import { dirSizes } from '../services/dir-size-service.ts'
 import { displayName } from '../core/format.ts'
 import type { ColumnDef } from '../core/columns.ts'
 import type { GFileInfo } from '../core/types.ts'
@@ -153,19 +154,52 @@ export function nameColumn(ctx: CellContext): any {
   return col
 }
 
+/* Live Size-column labels, keyed to their bound item so folder-size results
+ * can be painted *in place* as scans land. Repainting through refreshCells
+ * would re-set the factories — the ColumnView materializes every row, so that
+ * rebuilds the entire listing's widgets per wave of results and visibly janks
+ * the UI. Rewriting just the label text touches only the cells whose value
+ * changed. */
+const sizeLabels = new Set<any>()
+let sizeHooked = false
+function hookDirSizes(def: ColumnDef): void {
+  if (sizeHooked) return
+  sizeHooked = true
+  dirSizes.on('changed', () => {
+    for (const label of sizeLabels) {
+      const info = label._sizeInfo
+      if (!info) continue
+      try {
+        const text = def.format(info)
+        if (label.getLabel() !== text) label.setLabel(text)
+      } catch { sizeLabels.delete(label) }   /* disposed widget */
+    }
+  })
+}
+
 /* A resizable text column driven by a registry ColumnDef (its label + pure
  * formatter). The FileView keeps its own ordered list of these to rebuild the
  * visible column set. The factory is exported separately so refreshCells can
  * rebind meta cells whose data lives outside the model (e.g. the Tags column). */
 export function metaFactory(def: ColumnDef): any {
   const factory = new Gtk.SignalListItemFactory()
+  const isSize = def.id === 'size'
   factory.on('setup', (item: any) => {
     const label = new Gtk.Label({ xalign: def.rightAlign ? 1 : 0, ellipsize: Pango.EllipsizeMode.END })
     label.addCssClass('dim-label')
     label.addCssClass('mariner-meta-cell')
+    if (isSize) { sizeLabels.add(label); hookDirSizes(def) }
     item.setChild(label)
   })
-  factory.on('bind', (item: any) => item.getChild().setLabel(def.format(item.getItem())))
+  factory.on('bind', (item: any) => {
+    const label = item.getChild()
+    label.setLabel(def.format(item.getItem()))
+    if (isSize) label._sizeInfo = item.getItem()
+  })
+  if (isSize) {
+    factory.on('unbind', (item: any) => { item.getChild()._sizeInfo = null })
+    factory.on('teardown', (item: any) => sizeLabels.delete(item.getChild()))
+  }
   return factory
 }
 
