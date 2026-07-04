@@ -68,6 +68,7 @@ export class AppWindow {
   _tagActionCount = 0
   _ctxPopover: any = null
   _pendingTagsChanged = false
+  _pendingSizesChanged = false
   _ctxTag: string | null = null
   _quicklook: QuickLook | null = null
   _palette: CommandPalette | null = null
@@ -260,6 +261,13 @@ export class AppWindow {
       if (this._ctxPopover) { this._pendingTagsChanged = true; return }
       this._applyTagsChanged()
     })
+
+    /* Folder-size results land in waves; repaint the active tab's Size cells
+     * (coalesced by the service, deferred around popovers like tags above). */
+    dirSizes.on('changed', () => {
+      if (this._ctxPopover) { this._pendingSizesChanged = true; return }
+      for (const p of this.activeTab?.panes ?? []) p.view.refreshCells()
+    })
   }
 
   _applyTagsChanged(): void {
@@ -271,12 +279,15 @@ export class AppWindow {
     }
   }
 
-  /* Folder-sizes preference (see dir-size-service.ts). Toggling repaints every
-   * pane so Size cells gain/lose their folder values immediately. */
+  /* Folder-sizes preference (see dir-size-service.ts). Toggling on queues the
+   * visible listings; toggling off drops the queue. Either way every pane
+   * repaints so Size cells gain/lose their folder values immediately. */
   _setDirSizesEnabled(v: boolean): void {
     this.prefs.dirSizes = v
     dirSizes.enabled = v
     saveViewPrefs(this.prefs)
+    if (v) { for (const p of this.activeTab?.panes ?? []) p.queueDirSizes() }
+    else dirSizes.clear()
     for (const tab of this.tabs) for (const p of tab.panes) p.view.refreshCells()
   }
 
@@ -826,6 +837,8 @@ export class AppWindow {
     this._activeTab = tab
     if (this.searching) this._setSearch(false)
     this.refreshChrome(tab)
+    /* Point the folder-size queue at what's now on screen. */
+    for (const p of tab.panes) p.queueDirSizes()
   }
 
   _onClosePage(page: any): boolean {
@@ -960,6 +973,10 @@ export class AppWindow {
     pop.on('closed', () => {
       this._ctxPopover = null
       if (this._pendingTagsChanged) { this._pendingTagsChanged = false; this._applyTagsChanged() }
+      if (this._pendingSizesChanged) {
+        this._pendingSizesChanged = false
+        for (const p of this.activeTab?.panes ?? []) p.view.refreshCells()
+      }
       GLib.timeoutAdd(GLib.PRIORITY_DEFAULT_IDLE, 100, () => { try { pop.unparent() } catch {} return false })
     })
     pop.popup()
