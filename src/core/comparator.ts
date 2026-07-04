@@ -1,4 +1,4 @@
-import { isDirectory, displayName, modifiedUnix } from './format.ts'
+import { isDirectory, displayName, modifiedUnix, sizeForSort } from './format.ts'
 import type { GFileInfo, SortKey } from './types.ts'
 
 export type Comparator = (a: GFileInfo, b: GFileInfo) => number
@@ -13,7 +13,7 @@ export function makeComparator(key: SortKey, desc: boolean): Comparator {
     if (ad !== bd) return ad ? -1 : 1   /* folders first, regardless of order */
     let r = 0
     switch (key) {
-      case 'size': r = a.getSize() - b.getSize(); break
+      case 'size': r = sizeForSort(a) - sizeForSort(b); break
       case 'type': r = collate(a.getContentType() || '', b.getContentType() || ''); break
       case 'modified': r = modifiedUnix(a) - modifiedUnix(b); break
       default: r = 0

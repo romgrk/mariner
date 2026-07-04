@@ -13,9 +13,30 @@ export function displayName(info: GFileInfo): string {
   return info.getDisplayName() || info.getName()
 }
 
+/* Folder sizes are computed by the DirSizeService, which injects its lookups
+ * here at import time (so core stays free of service imports) — the value is
+ * null when the feature is off, the location isn't local, or the size isn't
+ * known yet; `pending` says a scan is queued/running (shown as "…"). */
+let dirSizeLookup = (_info: GFileInfo): number | null => null
+let dirSizePending = (_info: GFileInfo): boolean => false
+export function setDirSizeLookup(fn: (info: GFileInfo) => number | null): void { dirSizeLookup = fn }
+export function setDirSizePending(fn: (info: GFileInfo) => boolean): void { dirSizePending = fn }
+
 export function formatSize(info: GFileInfo): string {
-  if (isDirectory(info)) return ''
+  if (isDirectory(info)) {
+    const bytes = dirSizeLookup(info)
+    if (bytes !== null) return GLib.formatSize(bytes)
+    return dirSizePending(info) ? '…' : ''
+  }
   return GLib.formatSize(info.getSize())
+}
+
+/* Sortable size: files by st_size, folders by their computed recursive size
+ * (unknown folders sort as -1). Folders group before files in the comparator
+ * regardless, so the two scales never actually mix. */
+export function sizeForSort(info: GFileInfo): number {
+  if (isDirectory(info)) return dirSizeLookup(info) ?? -1
+  return Number(info.getSize())
 }
 
 export function formatBytes(bytes: number): string {

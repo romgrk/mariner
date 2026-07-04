@@ -60,6 +60,10 @@ export interface Prefs {
   sidebarHidden: string[]
   /* Terminal command template ('' = auto-detect; see services/terminal.ts). */
   terminal: string
+  /* Opt-in recursive folder sizes in the list view's Size column. */
+  dirSizes: boolean
+  /* Minutes before a cached folder size goes stale and is re-scanned. */
+  dirSizesTtl: number
 }
 
 /* What the FileView needs to filter + order a dataset. */

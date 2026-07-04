@@ -4,6 +4,7 @@ import { statSync } from 'node:fs'
 import { resolve, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { AppWindow } from './window.ts'
+import { debugLog, installDiagnostics } from './core/debug-log.ts'
 import { fileForPath, fileForUri } from './core/gio.ts'
 import { HOME } from './core/format.ts'
 import { loadStyles } from './ui/style.ts'
@@ -50,12 +51,18 @@ function startPath(): string {
   }
 }
 
+installDiagnostics()
+
 /* Under node-gtk ESM, app.run() returns immediately; an explicit GLib.MainLoop
  * pumps the GLib loop, and is quit when the last window is removed. */
 const loop = GLib.MainLoop.new(null, false)
 const app = new Adw.Application({ applicationId: 'com.github.romgrk.mariner', flags: 0 })
 
 app.on('activate', () => {
+  /* Fires on the primary instance for every launch, including remote ones
+   * (single-instance GApplication), so repeats here mean another invocation
+   * — xdg-open, the FileManager1 service, a test run — reached this process. */
+  debugLog('activate', `argv=${JSON.stringify(process.argv.slice(2))}`)
   loadStyles()
   for (const [action, accels] of Object.entries(ACCELS))
     app.setAccelsForAction(action, accels)
@@ -75,8 +82,11 @@ app.on('activate', () => {
   loop.run()
 })
 
+app.on('window-added', () => debugLog('window-added', `count=${app.getWindows().length}`))
 app.on('window-removed', () => {
-  if (app.getWindows().length === 0) loop.quit()
+  const count = app.getWindows().length
+  debugLog('window-removed', `count=${count}`)
+  if (count === 0) { debugLog('loop-quit', 'last window removed'); loop.quit() }
 })
 
 app.run()

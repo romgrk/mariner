@@ -16,10 +16,12 @@ import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
 import { archiveRootFile } from './core/archive-uri.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
+import { debugLog } from './core/debug-log.ts'
 import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
 import { tagsService, tagUri, isTagUri } from './services/tags-service.ts'
+import { dirSizes } from './services/dir-size-service.ts'
 import { newTagDialog, editTagDialog, deleteTagDialog } from './ui/new-tag-dialog.ts'
 import { tagIconName } from './ui/tag-icons.ts'
 import { customMenuSupported, buildTagDotsRow, buildTagListRows, TAG_DOTS_FIT } from './ui/tag-menu.ts'
@@ -95,6 +97,8 @@ export class AppWindow {
 
   constructor(app: any, startFile: GFile) {
     this.app = app
+    dirSizes.enabled = this.prefs.dirSizes
+    dirSizes.ttlMs = this.prefs.dirSizesTtl * 60_000
     this._buildUI()
     this._buildActions()
     this._installShortcuts()
@@ -150,12 +154,19 @@ export class AppWindow {
     this.window.setDefaultSize(st.width, st.height)
     if (st.maximized) this.window.maximize()
     this.window.on('close-request', () => {
-      this._saveState()
+      debugLog('close-request', `windows=${this.app.getWindows().length}`)
+      /* A throw here must not skip the exit below, or the window closes but the
+       * process lingers with no logged reason. */
+      try { this._saveState() } catch (e: any) { debugLog('save-state-failed', e?.stack ?? String(e)) }
       /* When the last window closes, exit the process: node-gtk keeps it alive
        * even after the GTK loop winds down, so an explicit exit is needed. */
       if (this.app.getWindows().length <= 1) process.exit(0)
       return false
     })
+    /* A destroy with no close-request line right before it means something
+     * destroyed the window programmatically — that's the smoking gun for the
+     * window vanishing on its own. */
+    this.window.on('destroy', () => debugLog('window-destroy'))
     this.window.addCssClass('view')
 
     this.toastOverlay = new Adw.ToastOverlay()
@@ -281,6 +292,8 @@ export class AppWindow {
       if (this._ctxPopover) { this._pendingTagsChanged = true; return }
       this._applyTagsChanged()
     })
+    /* Folder-size results repaint their cells in place (see cells.ts) — no
+     * refreshCells here: rebuilding every row widget per wave janks the UI. */
   }
 
   _applyTagsChanged(): void {
@@ -290,6 +303,24 @@ export class AppWindow {
         if (p.location && isTagUri(p.location.getUri())) p.reload()
       }
     }
+  }
+
+  /* Folder-sizes preference (see dir-size-service.ts). Toggling on queues the
+   * visible listings; toggling off drops the queue. Either way every pane
+   * repaints so Size cells gain/lose their folder values immediately. */
+  _setDirSizesEnabled(v: boolean): void {
+    this.prefs.dirSizes = v
+    dirSizes.enabled = v
+    saveViewPrefs(this.prefs)
+    if (v) { for (const p of this.activeTab?.panes ?? []) p.queueDirSizes() }
+    else dirSizes.clear()
+    for (const tab of this.tabs) for (const p of tab.panes) p.view.refreshCells()
+  }
+
+  _setDirSizesTtl(minutes: number): void {
+    this.prefs.dirSizesTtl = minutes
+    dirSizes.ttlMs = minutes * 60_000
+    saveViewPrefs(this.prefs)
   }
 
   /* ---- Actions ---- */
@@ -325,7 +356,7 @@ export class AppWindow {
     add('close-tab', () => { if (this.activeTab) this.tabView.closePage(this.activeTab.page) })
     add('tab-prev', () => this.tabView.selectPreviousPage())
     add('tab-next', () => this.tabView.selectNextPage())
-    add('quit', () => this.window.close())
+    add('quit', () => { debugLog('quit-action'); this.window.close() })
     add('about', () => aboutDialog(this.window))
     add('shortcuts', () => shortcutsDialog().present(this.window))
     add('preferences', () => preferencesDialog(this.window, this))
@@ -854,13 +885,19 @@ export class AppWindow {
     this._activeTab = tab
     if (this.searching) this._setSearch(false)
     this.refreshChrome(tab)
+    /* Point the folder-size queue at what's now on screen. */
+    for (const p of tab.panes) p.queueDirSizes()
   }
 
   _onClosePage(page: any): boolean {
     const tab = this.tabs.find(t => t.page === page)
     if (tab) { tab.destroy(); this.tabs = this.tabs.filter(t => t !== tab) }
     this.tabView.closePageFinish(page, true)
-    if (this.tabView.getNPages() === 0) this.window.close()
+    /* close-page can also fire from AdwTabView itself (e.g. a tab drag gone
+     * wrong), not just Ctrl+W — log who's left so an unexpected close of the
+     * last page is traceable. */
+    debugLog('close-page', `pages=${this.tabView.getNPages()}`)
+    if (this.tabView.getNPages() === 0) { debugLog('last-tab-closed', 'closing window'); this.window.close() }
     return true
   }
 

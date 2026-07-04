@@ -28,6 +28,28 @@ export function preferencesDialog(parent: any, win: AppWindow): void {
     win.hiddenAction.setState(GLib.Variant.newBoolean(v))
     win.activeTab?.applyPrefs()
   }))
+  /* Folder sizes are opt-in: computing them reads entire subtrees, which is
+   * not something to spring on anyone by default. The row's enable switch is
+   * the feature toggle; its settings (the cache TTL) nest inside. */
+  const sizesRow = new Adw.ExpanderRow({
+    title: 'Calculate Folder Sizes',
+    subtitle: 'Show folder sizes in the list view — scans folder contents',
+    showEnableSwitch: true,
+    enableExpansion: win.prefs.dirSizes,
+    expanded: win.prefs.dirSizes,
+  })
+  const ttlRow = new Adw.SpinRow({
+    title: 'Refresh After',
+    subtitle: 'Minutes before a cached folder size is re-scanned',
+    adjustment: new Gtk.Adjustment({
+      lower: 1, upper: 1440, stepIncrement: 5, pageIncrement: 60,
+      value: win.prefs.dirSizesTtl,
+    }),
+  })
+  ttlRow.on('notify::value', () => win._setDirSizesTtl(Math.round(ttlRow.getValue())))
+  sizesRow.addRow(ttlRow)
+  sizesRow.on('notify::enable-expansion', () => win._setDirSizesEnabled(sizesRow.getEnableExpansion()))
+  viewGroup.add(sizesRow)
   page.add(viewGroup)
 
   const sortGroup = new Adw.PreferencesGroup({ title: 'Sorting' })

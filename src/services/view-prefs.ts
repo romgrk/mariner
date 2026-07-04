@@ -8,9 +8,24 @@ const DIR = GLib.getUserConfigDir() + '/mariner'
 const FILE = DIR + '/view-prefs.json'
 
 /* The view choices we persist across runs: grid-vs-list mode, the list-view's
- * visible/ordered columns, which sidebar items/sections are hidden, and the
- * custom terminal command template ('' = auto-detect; see services/terminal.ts). */
-export interface ViewPrefs { viewMode: ViewMode; columns: ColumnConfig[]; sidebarHidden: string[]; terminal: string }
+ * visible/ordered columns, which sidebar items/sections are hidden, the custom
+ * terminal command template ('' = auto-detect; see services/terminal.ts), and
+ * the (opt-in) folder-sizes feature with its cache TTL. */
+export interface ViewPrefs {
+  viewMode: ViewMode
+  columns: ColumnConfig[]
+  sidebarHidden: string[]
+  terminal: string
+  dirSizes: boolean
+  dirSizesTtl: number
+}
+
+const DEFAULT_TTL = 15   /* minutes */
+
+function normalizeTtl(raw: unknown): number {
+  const n = Math.round(Number(raw))
+  return Number.isFinite(n) && n >= 1 && n <= 1440 ? n : DEFAULT_TTL
+}
 
 /* Drop stored sidebar ids that no longer exist (same stays-valid-across-releases
  * treatment as normalizeColumns). Everything is shown by default, so only the
@@ -32,8 +47,12 @@ export function loadViewPrefs(): ViewPrefs {
       columns: Array.isArray(raw.columns) ? normalizeColumns(raw.columns) : defaultColumnConfig(),
       sidebarHidden: normalizeSidebarHidden(raw.sidebarHidden),
       terminal: typeof raw.terminal === 'string' ? raw.terminal : '',
+      dirSizes: raw.dirSizes === true,
+      dirSizesTtl: normalizeTtl(raw.dirSizesTtl),
     }
-  } catch { return { viewMode: 'grid', columns: defaultColumnConfig(), sidebarHidden: [], terminal: '' } }
+  } catch {
+    return { viewMode: 'grid', columns: defaultColumnConfig(), sidebarHidden: [], terminal: '', dirSizes: false, dirSizesTtl: DEFAULT_TTL }
+  }
 }
 
 export function saveViewPrefs(prefs: ViewPrefs): void {
@@ -44,6 +63,8 @@ export function saveViewPrefs(prefs: ViewPrefs): void {
       columns: prefs.columns,
       sidebarHidden: prefs.sidebarHidden,
       terminal: prefs.terminal,
+      dirSizes: prefs.dirSizes,
+      dirSizesTtl: prefs.dirSizesTtl,
     }))
   } catch { /* non-fatal */ }
 }

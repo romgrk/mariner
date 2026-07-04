@@ -6,6 +6,8 @@ import { DirectoryService } from './services/directory-service.ts'
 import { SearchService } from './services/search-service.ts'
 import { TagLocationService } from './services/tag-location-service.ts'
 import { isTagUri, tagFromUri, HIDDEN_TAGS_NAME } from './services/tags-service.ts'
+import { dirSizes } from './services/dir-size-service.ts'
+import { isDirectory } from './core/format.ts'
 import { createTagsView } from './ui/tags-view.ts'
 import type { TagsView } from './ui/tags-view.ts'
 import { COMPUTER_URI } from './services/places-service.ts'
@@ -113,7 +115,7 @@ export class Pane {
     this.dir.on('loading', () => { this.view.configure(this._dirConfig()); this.view.beginLoading() })
     this.dir.on('items', (batch: GFileInfo[]) => this.view.addEntries(
       batch.map((info): Entry => ({ info, file: this.location.getChild(info.getName()) }))))
-    this.dir.on('ready', () => this.view.finishLoading('folder'))
+    this.dir.on('ready', () => { this.view.finishLoading('folder'); this.queueDirSizes() })
     this.dir.on('error', (msg: string) => this.view.showError(msg))
     this.dir.on('invalidated', () => { if (!this.isShowingSearch) this.dir.load(this.location) })
 
@@ -124,7 +126,23 @@ export class Pane {
 
     this.tagLoc.on('loading', () => { this.view.configure(this._dirConfig()); this.view.beginLoading() })
     this.tagLoc.on('items', (batch: Entry[]) => this.view.addEntries(batch))
-    this.tagLoc.on('ready', () => { if (this.isTagLocation) this.view.finishLoading('folder') })
+    this.tagLoc.on('ready', () => { if (this.isTagLocation) { this.view.finishLoading('folder'); this.queueDirSizes() } })
+  }
+
+  /* Queue folder-size scans for the displayed listing, in view order (see
+   * dir-size-service.ts — the queue is replaced wholesale, so the listing the
+   * user is looking at always scans first). Called when a listing finishes
+   * loading, and by the window when the feature is toggled on or this pane's
+   * tab becomes active. */
+  queueDirSizes(): void {
+    if (!dirSizes.enabled) return
+    const paths: string[] = []
+    for (const { info, file } of this.view.entries()) {
+      if (!isDirectory(info)) continue
+      const path = file?.getPath()
+      if (path) paths.push(path)
+    }
+    dirSizes.scanListing(paths)
   }
 
   _dirConfig(): ViewConfig {
