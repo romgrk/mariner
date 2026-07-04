@@ -167,11 +167,16 @@ export function createPathBar(handlers: PathBarHandlers): PathBar {
   scrolled.addController(scroll)
 
   /* Auto-scroll to the end so the current folder stays visible. */
-  scrolled.getHadjustment().on('changed', () => {
+  const scrollToEnd = (): void => {
     const last = buttonsBox.getLastChild()
     const vp = scrolled.getChild()
     if (last && vp && vp.scrollTo) { try { vp.scrollTo(last, null) } catch {} }
-  })
+  }
+  scrolled.getHadjustment().on('changed', scrollToEnd)
+  /* The header stack switch (pathbar ↔ location entry) zeroes the viewport's
+   * scroll while the bar is unmapped, without an hadjustment 'changed' on
+   * re-map; re-pin once the new allocation lands. */
+  scrolled.on('map', () => GLib.idleAdd(GLib.PRIORITY_DEFAULT_IDLE, () => { scrollToEnd(); return false }))
 
   /* "view-more" current-folder menu button at the end of the bar. */
   const menuButton = new Gtk.MenuButton({

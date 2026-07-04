@@ -8,8 +8,9 @@ const DIR = GLib.getUserConfigDir() + '/mariner'
 const FILE = DIR + '/view-prefs.json'
 
 /* The view choices we persist across runs: grid-vs-list mode, the list-view's
- * visible/ordered columns, and which sidebar items/sections are hidden. */
-export interface ViewPrefs { viewMode: ViewMode; columns: ColumnConfig[]; sidebarHidden: string[] }
+ * visible/ordered columns, which sidebar items/sections are hidden, and the
+ * custom terminal command template ('' = auto-detect; see services/terminal.ts). */
+export interface ViewPrefs { viewMode: ViewMode; columns: ColumnConfig[]; sidebarHidden: string[]; terminal: string }
 
 /* Drop stored sidebar ids that no longer exist (same stays-valid-across-releases
  * treatment as normalizeColumns). Everything is shown by default, so only the
@@ -30,8 +31,9 @@ export function loadViewPrefs(): ViewPrefs {
       viewMode: raw.viewMode === 'list' ? 'list' : 'grid',
       columns: Array.isArray(raw.columns) ? normalizeColumns(raw.columns) : defaultColumnConfig(),
       sidebarHidden: normalizeSidebarHidden(raw.sidebarHidden),
+      terminal: typeof raw.terminal === 'string' ? raw.terminal : '',
     }
-  } catch { return { viewMode: 'grid', columns: defaultColumnConfig(), sidebarHidden: [] } }
+  } catch { return { viewMode: 'grid', columns: defaultColumnConfig(), sidebarHidden: [], terminal: '' } }
 }
 
 export function saveViewPrefs(prefs: ViewPrefs): void {
@@ -41,6 +43,7 @@ export function saveViewPrefs(prefs: ViewPrefs): void {
       viewMode: prefs.viewMode,
       columns: prefs.columns,
       sidebarHidden: prefs.sidebarHidden,
+      terminal: prefs.terminal,
     }))
   } catch { /* non-fatal */ }
 }

@@ -3,6 +3,7 @@ import Adw from 'gi:Adw-1'
 import GLib from 'gi:GLib-2.0'
 import { SIDEBAR_ITEMS } from '../services/places-service.ts'
 import { tagsService } from '../services/tags-service.ts'
+import { saveViewPrefs } from '../services/view-prefs.ts'
 import type { AppWindow } from '../window.ts'
 import type { SortKey, ViewMode } from '../core/types.ts'
 
@@ -51,6 +52,20 @@ export function preferencesDialog(parent: any, win: AppWindow): void {
   tagsRow.on('notify::active', () => tagsService.setEnabled(tagsRow.getActive()))
   tagsGroup.add(tagsRow)
   page.add(tagsGroup)
+
+  /* Template used by Open in Terminal and the location entry's `!!command`
+   * (see services/terminal.ts). Empty = probe the known emulators. */
+  const termGroup = new Adw.PreferencesGroup({
+    title: 'Terminal',
+    description: 'Command used to open an external terminal. %d is the directory, %c the command to run. Leave empty to auto-detect.',
+  })
+  const termRow = new Adw.EntryRow({ title: 'Terminal Command', text: win.prefs.terminal })
+  termRow.on('notify::text', () => {
+    win.prefs.terminal = termRow.getText().trim()
+    saveViewPrefs(win.prefs)
+  })
+  termGroup.add(termRow)
+  page.add(termGroup)
 
   const sidebarPage = new Adw.PreferencesPage({ title: 'Sidebar', iconName: 'sidebar-show-symbolic' })
   const sidebarGroup = new Adw.PreferencesGroup({ title: 'Visible Items' })

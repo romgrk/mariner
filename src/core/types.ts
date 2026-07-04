@@ -58,6 +58,8 @@ export interface Prefs {
   columns: ColumnConfig[]
   /* Ids of sidebar items/sections the user hid (see SIDEBAR_ITEMS). */
   sidebarHidden: string[]
+  /* Terminal command template ('' = auto-detect; see services/terminal.ts). */
+  terminal: string
 }
 
 /* What the FileView needs to filter + order a dataset. */

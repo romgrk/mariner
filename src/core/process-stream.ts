@@ -15,6 +15,9 @@ export class ProcessStream extends EventEmitter {
   cwd?: string
   env?: Record<string, string>
   rawLines: boolean
+  /* Route the child's stderr into the stdout pipe (STDERR_MERGE), so 'line'
+   * events carry both interleaved and 'end' always reports ok. */
+  mergeStderr: boolean
   cancelled = false
   paused = false
   proc: any = null
@@ -26,17 +29,19 @@ export class ProcessStream extends EventEmitter {
    * isn't localized). `rawLines` reads stdout as raw bytes split on \n, so a *blank*
    * line is a real line (the GDataInputStream path treats a zero-length read as EOF,
    * which truncates tools that print blank lines mid-output, e.g. 7z's banner). */
-  constructor(argv: string[], opts: { cwd?: string; env?: Record<string, string>; rawLines?: boolean } = {}) {
+  constructor(argv: string[], opts: { cwd?: string; env?: Record<string, string>; rawLines?: boolean; mergeStderr?: boolean } = {}) {
     super()
     this.argv = argv
     this.cwd = opts.cwd
     this.env = opts.env
     this.rawLines = !!opts.rawLines
+    this.mergeStderr = !!opts.mergeStderr
   }
 
   start(): this {
     try {
-      const flags = Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_PIPE
+      const flags = Gio.SubprocessFlags.STDOUT_PIPE |
+        (this.mergeStderr ? Gio.SubprocessFlags.STDERR_MERGE : Gio.SubprocessFlags.STDERR_PIPE)
       if (this.cwd || this.env) {
         const launcher = Gio.SubprocessLauncher.new(flags)
         if (this.cwd) launcher.setCwd(this.cwd)
@@ -57,7 +62,8 @@ export class ProcessStream extends EventEmitter {
     const outEof = () => { this._outDone = true; this._maybeFinish() }
     if (this.rawLines) this._pumpRaw(this.proc.getStdoutPipe(), onOut, outEof)
     else this._pump(Gio.DataInputStream.new(this.proc.getStdoutPipe()), onOut, outEof)
-    this._pump(Gio.DataInputStream.new(this.proc.getStderrPipe()), line => { this._stderr += line + '\n' }, () => { this._errDone = true; this._maybeFinish() }, GLib.PRIORITY_LOW)
+    if (this.mergeStderr) this._errDone = true
+    else this._pump(Gio.DataInputStream.new(this.proc.getStderrPipe()), line => { this._stderr += line + '\n' }, () => { this._errDone = true; this._maybeFinish() }, GLib.PRIORITY_LOW)
     return this
   }
 

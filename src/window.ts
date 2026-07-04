@@ -33,6 +33,9 @@ import { openWithDialog } from './ui/open-with.ts'
 import { buildContextMenu } from './ui/context-menu.ts'
 import { columnChooserDialog } from './ui/column-chooser.ts'
 import { loadViewPrefs, saveViewPrefs } from './services/view-prefs.ts'
+import { spawnTerminal } from './services/terminal.ts'
+import { createCommandPanel } from './ui/command-bar.ts'
+import type { CommandPanel } from './ui/command-bar.ts'
 import { QuickLook } from './ui/preview.ts'
 import { OperationsQueue } from './ui/operations-queue.ts'
 import { planTransfer } from './ui/conflict-dialog.ts'
@@ -78,6 +81,7 @@ export class AppWindow {
   sidebar!: any
   toolbar!: any
   tabView!: any
+  commandPanel!: CommandPanel
   _trashBanner!: any
   backAction!: any
   forwardAction!: any
@@ -162,7 +166,7 @@ export class AppWindow {
       onOpenWindow: (file: GFile) => new AppWindow(this.app, file),
       onProperties: (file: GFile) => this._propertiesFor(file),
       onLocationEntry: (text: string) => this.openPath(text),
-      onLocationExit: () => { this.toolbar.showStack('pathbar'); this.activeTab?.view.widget.grabFocus() },
+      onLocationExit: () => { this.toolbar.showStack('pathbar'); this.activeTab?.view.focusView() },
       onSearchChanged: (text: string) => this.activeTab?.setSearchQuery(text),
       onSearchFilter: (f) => this.activeTab?.setSearchFilter(f),
       onSearchExit: () => { if (this.searching) this._setSearch(false) },
@@ -177,10 +181,13 @@ export class AppWindow {
     this._trashBanner = new Adw.Banner({ title: 'Items in the Trash will be permanently deleted after 30 days', buttonLabel: 'Empty Trash', revealed: false })
     this._trashBanner.on('button-clicked', () => this._emptyTrash())
 
+    this.commandPanel = createCommandPanel(msg => this.toast(msg))
+
     const contentView = new Adw.ToolbarView()
     contentView.addTopBar(this.toolbar.header)
     contentView.addTopBar(tabBar)
     contentView.addTopBar(this._trashBanner)
+    contentView.addBottomBar(this.commandPanel.widget)
     contentView.setContent(this.tabView)
     this.split.setContent(contentView)
 
@@ -790,6 +797,7 @@ export class AppWindow {
   openPath(text: string): void {
     text = text.trim()
     if (!text) return
+    if (text.startsWith('!')) { this._runCommand(text); return }
     let file: GFile
     if (text.startsWith('~')) file = fileForPath(HOME + text.slice(1))
     else if (/^[a-z]+:\/\//i.test(text)) file = fileForUri(text)
@@ -798,6 +806,27 @@ export class AppWindow {
 
     if (file.queryExists(null)) { this.toolbar.showStack('pathbar'); this.navigate(file) }
     else this.toast('Location not found')
+  }
+
+  /* `!command` in the location entry runs it in the current directory with
+   * output streamed to the command panel; `!!command` opens it in an external
+   * terminal instead (interactive escape hatch), and a bare `!!` just opens a
+   * terminal. The completion reload targets the tab that launched the command,
+   * not whichever tab is active when it exits. */
+  _runCommand(text: string): void {
+    const terminal = text.startsWith('!!')
+    const command = text.slice(terminal ? 2 : 1).trim()
+    const tab = this.activeTab
+    const cwd = tab && tab.location.getPath()
+    if (!cwd) { this.toast('Not a local folder'); return }
+    this.toolbar.showStack('pathbar')
+    tab.view.focusView()
+    if (terminal) {
+      if (!spawnTerminal(cwd, command || null, this.prefs.terminal))
+        this.toast('No terminal application found')
+    } else if (command) {
+      this.commandPanel.run(command, cwd, () => tab.reload())
+    }
   }
 
   _onTabSwitched(): void {
@@ -1058,12 +1087,7 @@ export class AppWindow {
   _openTerminal(): void {
     const path = this.activeTab && this.activeTab.location.getPath()
     if (!path) return
-    const launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.NONE)
-    launcher.setCwd(path)
-    for (const term of ['ptyxis', 'kgx', 'gnome-terminal', 'konsole', 'alacritty', 'foot', 'xterm']) {
-      try { launcher.spawnv([term]); return } catch { /* not installed — try next */ }
-    }
-    this.toast('No terminal application found')
+    if (!spawnTerminal(path, null, this.prefs.terminal)) this.toast('No terminal application found')
   }
 
   _setWallpaper(): void {

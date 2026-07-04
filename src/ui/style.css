@@ -347,3 +347,19 @@ rubberband {
 menubutton.op-flash > button {
   animation: op-finished-flash 2s ease-in-out;
 }
+
+/* ---- Command panel (`!command` output, ui/command-bar.ts) ---- */
+.command-panel {
+  border-top: 1px solid var(--border-color);
+}
+.command-panel-header {
+  padding: 4px 6px 2px 12px;
+}
+.command-panel-cmd {
+  font-family: monospace;
+  font-size: 0.9em;
+  opacity: 0.8;
+}
+.command-panel-output {
+  font-size: 0.9em;
+}
