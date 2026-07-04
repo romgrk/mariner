@@ -1310,6 +1310,11 @@ export class AppWindow {
 
   /* ---- Search / location ---- */
   _showLocationEntry(): void {
+    /* Always open on the current location: refreshChrome only updates the text
+     * on navigation, so a `!command` or an Escaped edit would otherwise leak
+     * stale text into the next open. */
+    const tab = this.activeTab
+    if (tab) this.toolbar.locationEntry.setText(tab.location.getPath() || tab.location.getUri())
     this.toolbar.showStack('location')
     this.toolbar.locationEntry.grabFocus()
     this.toolbar.locationEntry.selectRegion(0, -1)
