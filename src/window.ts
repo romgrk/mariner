@@ -16,6 +16,7 @@ import { UndoService } from './services/undo-service.ts'
 import { ArchiveService, isArchive } from './services/archive-service.ts'
 import { archiveRootFile } from './core/archive-uri.ts'
 import { loadWindowState, saveWindowState } from './services/window-state.ts'
+import { debugLog } from './core/debug-log.ts'
 import { promptText, confirm, chooseFolder, showProperties, aboutDialog } from './ui/dialogs.ts'
 import { createSidebar } from './ui/sidebar.ts'
 import { addBookmark, removeBookmark, isBookmarked } from './services/places-service.ts'
@@ -129,12 +130,19 @@ export class AppWindow {
     this.window.setDefaultSize(st.width, st.height)
     if (st.maximized) this.window.maximize()
     this.window.on('close-request', () => {
-      this._saveState()
+      debugLog('close-request', `windows=${this.app.getWindows().length}`)
+      /* A throw here must not skip the exit below, or the window closes but the
+       * process lingers with no logged reason. */
+      try { this._saveState() } catch (e: any) { debugLog('save-state-failed', e?.stack ?? String(e)) }
       /* When the last window closes, exit the process: node-gtk keeps it alive
        * even after the GTK loop winds down, so an explicit exit is needed. */
       if (this.app.getWindows().length <= 1) process.exit(0)
       return false
     })
+    /* A destroy with no close-request line right before it means something
+     * destroyed the window programmatically — that's the smoking gun for the
+     * window vanishing on its own. */
+    this.window.on('destroy', () => debugLog('window-destroy'))
     this.window.addCssClass('view')
 
     this.toastOverlay = new Adw.ToastOverlay()
@@ -301,7 +309,7 @@ export class AppWindow {
     add('close-tab', () => { if (this.activeTab) this.tabView.closePage(this.activeTab.page) })
     add('tab-prev', () => this.tabView.selectPreviousPage())
     add('tab-next', () => this.tabView.selectNextPage())
-    add('quit', () => this.window.close())
+    add('quit', () => { debugLog('quit-action'); this.window.close() })
     add('about', () => aboutDialog(this.window))
     add('shortcuts', () => shortcutsDialog().present(this.window))
     add('preferences', () => preferencesDialog(this.window, this))
@@ -814,7 +822,11 @@ export class AppWindow {
     const tab = this.tabs.find(t => t.page === page)
     if (tab) { tab.destroy(); this.tabs = this.tabs.filter(t => t !== tab) }
     this.tabView.closePageFinish(page, true)
-    if (this.tabView.getNPages() === 0) this.window.close()
+    /* close-page can also fire from AdwTabView itself (e.g. a tab drag gone
+     * wrong), not just Ctrl+W — log who's left so an unexpected close of the
+     * last page is traceable. */
+    debugLog('close-page', `pages=${this.tabView.getNPages()}`)
+    if (this.tabView.getNPages() === 0) { debugLog('last-tab-closed', 'closing window'); this.window.close() }
     return true
   }
 
