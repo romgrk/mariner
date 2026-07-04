@@ -14,7 +14,7 @@ const APP_ID = 'com.github.romgrk.mariner'
 const DATA_DIR = fileURLToPath(new URL('../../data', import.meta.url))
 /* Launcher shipped by the npm package; absent under system installs, which
  * provide /usr/bin/mariner instead (see packaging/aur/PKGBUILD). */
-const LAUNCHER = fileURLToPath(new URL('../../bin/mariner.js', import.meta.url))
+const LAUNCHER = fileURLToPath(new URL('../../bin/mariner', import.meta.url))
 
 const ICON_DIRS = ['icons', 'hicolor', 'scalable', 'apps']
 const SYMBOLIC_DIRS = ['icons', 'hicolor', 'symbolic', 'apps']
@@ -34,11 +34,12 @@ function quoteExecArg(arg: string): string {
   return '"' + arg.replace(/[\\"`$]/g, c => '\\' + c) + '"'
 }
 
-/* Absolute node + launcher paths: .desktop entries launch with a minimal
- * session PATH that rarely includes nvm/pnpm/npm-prefix bin dirs. */
+/* Absolute launcher path, and node passed via MARINER_NODE: .desktop entries
+ * launch with a minimal session PATH that rarely includes nvm/pnpm/npm-prefix
+ * bin dirs, so the sh shim can't count on finding `node` there. */
 function execLine(): string {
   if (existsSync(LAUNCHER))
-    return `${quoteExecArg(process.execPath)} ${quoteExecArg(LAUNCHER)} %U`
+    return `env ${quoteExecArg(`MARINER_NODE=${process.execPath}`)} ${quoteExecArg(LAUNCHER)} %U`
   return 'mariner %U' // system install: launcher on PATH at /usr/bin/mariner
 }
 

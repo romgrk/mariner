@@ -1,0 +1,30 @@
+#!/bin/sh
+# Launcher for the `mariner` bin (see package.json "bin").
+#
+# exec's node directly — a JS launcher would boot node twice, since --import must
+# register the strip-types + gi: module hooks before main.ts's top-level GTK
+# imports are evaluated, and that requires re-invoking node with flags.
+# strip-types.mjs lets the .ts sources run from under node_modules, where Node's
+# built-in type stripping refuses to.
+#
+# MARINER_NODE overrides the node binary — the installed .desktop entry bakes an
+# absolute path in, since desktop sessions launch with a minimal PATH that rarely
+# includes nvm/pnpm/npm-prefix bin dirs (see src/cli/desktop-entry.ts).
+set -eu
+
+self=$(readlink -f "$0")
+root=$(dirname "$(dirname "$self")")
+
+# node-gtk sits in our own node_modules (dev checkout, npm -g) or is hoisted
+# next to us when mariner is installed as another project's dependency.
+register="$root/node_modules/node-gtk/lib/esm/register.mjs"
+[ -f "$register" ] || register="$root/../node-gtk/lib/esm/register.mjs"
+[ -f "$register" ] || { echo "mariner: cannot find node-gtk/register (looked under $root)" >&2; exit 1; }
+
+# Persistent V8 compile cache — faster startup. Newer node-gtk enables this from
+# its register hook (same default location); setting it here covers older
+# releases too. NODE_DISABLE_COMPILE_CACHE=1 opts out.
+NODE_COMPILE_CACHE="${NODE_COMPILE_CACHE:-${XDG_CACHE_HOME:-$HOME/.cache}/node-compile-cache}"
+export NODE_COMPILE_CACHE
+
+exec "${MARINER_NODE:-node}" --import "$root/bin/strip-types.mjs" --import "$register" "$root/src/main.ts" "$@"

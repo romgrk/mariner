@@ -14,7 +14,7 @@
   },
   "main": "src/main.ts",
   "bin": {
-    "mariner": "bin/mariner.js"
+    "mariner": "bin/mariner"
   },
   "files": [
     "bin",
