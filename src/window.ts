@@ -68,7 +68,6 @@ export class AppWindow {
   _tagActionCount = 0
   _ctxPopover: any = null
   _pendingTagsChanged = false
-  _pendingSizesChanged = false
   _ctxTag: string | null = null
   _quicklook: QuickLook | null = null
   _palette: CommandPalette | null = null
@@ -261,13 +260,8 @@ export class AppWindow {
       if (this._ctxPopover) { this._pendingTagsChanged = true; return }
       this._applyTagsChanged()
     })
-
-    /* Folder-size results land in waves; repaint the active tab's Size cells
-     * (coalesced by the service, deferred around popovers like tags above). */
-    dirSizes.on('changed', () => {
-      if (this._ctxPopover) { this._pendingSizesChanged = true; return }
-      for (const p of this.activeTab?.panes ?? []) p.view.refreshCells()
-    })
+    /* Folder-size results repaint their cells in place (see cells.ts) — no
+     * refreshCells here: rebuilding every row widget per wave janks the UI. */
   }
 
   _applyTagsChanged(): void {
@@ -973,10 +967,6 @@ export class AppWindow {
     pop.on('closed', () => {
       this._ctxPopover = null
       if (this._pendingTagsChanged) { this._pendingTagsChanged = false; this._applyTagsChanged() }
-      if (this._pendingSizesChanged) {
-        this._pendingSizesChanged = false
-        for (const p of this.activeTab?.panes ?? []) p.view.refreshCells()
-      }
       GLib.timeoutAdd(GLib.PRIORITY_DEFAULT_IDLE, 100, () => { try { pop.unparent() } catch {} return false })
     })
     pop.popup()

@@ -39,6 +39,13 @@ const MAX_ROWS = 50_000     /* evicted down to this (oldest first) at startup */
  * in the view sits pending behind it. */
 const CONCURRENCY = 4
 const CHANGED_DEBOUNCE_MS = 150
+/* du prints one line per nested directory; a node_modules-heavy tree yields
+ * tens of thousands — parsing and committing them all stalls the main thread
+ * for hundreds of ms. --max-depth bounds the *output* (the root total is
+ * still fully recursive): we keep subtree warmth for the levels the user will
+ * actually navigate next, and anything deeper rescans quickly from a warm
+ * page cache. */
+const MAX_DEPTH = 4
 
 /* bytes is null for folders du could not read at all (a tombstone: respects
  * the TTL so unreadable folders aren't rescanned on every listing). */
@@ -159,7 +166,7 @@ export class DirSizeService extends EventEmitter {
 
   _scan(root: string): void {
     const results = new Map<string, number>()
-    const proc = new ProcessStream(['du', '-B1', '--apparent-size', '--', root],
+    const proc = new ProcessStream(['du', '-B1', '--apparent-size', `--max-depth=${MAX_DEPTH}`, '--', root],
       { env: { LC_ALL: 'C' }, rawLines: true })
     proc.on('line', (line: string) => {
       const m = /^(\d+)\t(.+)$/.exec(line)
