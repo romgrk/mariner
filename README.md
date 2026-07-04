@@ -46,8 +46,10 @@ one app that still looks like stock GNOME.
 
 ### Type-ahead navigation
 
-Just start typing and Mariner navigates straight to the matching file. This innovative
-feature is now available on the GNOME desktop!
+Just start typing and Mariner navigates straight to the matching file. Matching
+is fuzzy and typo-tolerant: `dcmnts` finds `Documents`, and a slipped keystroke
+like `Documnets` still lands on it. This innovative feature is now available on
+the GNOME desktop!
 
 ### Dual-pane split view
 
@@ -154,7 +156,8 @@ format.
 Beyond the headliners above, a low-density rundown of what Mariner does that
 Nautilus doesn't (or does differently):
 
-- **Type-ahead find** — type to jump straight to a file, like Nautilus used to.
+- **Type-ahead find** — type to jump straight to a file, like Nautilus used
+  to — but fuzzy and typo-tolerant.
 - **Split view** — two panes in one tab, with cross-pane copy/move and drag.
 - **Quick Look** — Space-to-preview for images, audio/video, text and code.
 - **Command palette** — Ctrl+P to run any action or jump to a folder.
