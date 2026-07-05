@@ -5,7 +5,10 @@ import { ATTRS } from '../core/gio.ts'
 import { isArchiveLocation } from '../core/archive-uri.ts'
 import type { GFile } from '../core/types.ts'
 
-const BATCH = 64
+/* Entries per nextFilesAsync round-trip. Each round-trip pays fixed thread-pool
+ * + main-loop dispatch latency, so bigger batches load large folders in fewer
+ * hops; small folders finish in one round-trip either way. */
+const BATCH = 128
 
 /* Lists a directory asynchronously and incrementally (non-blocking), and keeps
  * it fresh with a Gio.FileMonitor. GTK-free.
