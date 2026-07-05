@@ -20,7 +20,11 @@
     "gtk": 4,
     "flatpak": {
       "runtimeVersion": "50",
-      "finishArgs": ["--filesystem=host"],
+      "finishArgs": [
+        "--filesystem=host",
+        "--talk-name=org.gtk.vfs.*",
+        "--filesystem=xdg-run/gvfsd"
+      ],
       "lintExceptions": {
         "finish-args-host-filesystem-access": "Mariner is a file manager; browsing and managing the whole filesystem is its core function, same as other file managers on Flathub."
       }
