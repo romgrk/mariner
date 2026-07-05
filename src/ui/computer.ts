@@ -60,7 +60,14 @@ export function createComputerView(): ComputerView {
         minChildrenPerLine: 1, maxChildrenPerLine: 4,
         valign: Gtk.Align.START,
       })
-      for (const item of group.items) grid.append(card(item))
+      for (const item of group.items) {
+        const c = card(item)
+        grid.append(c)
+        /* FlowBox wraps children in a GtkFlowBoxChild with its own hover
+         * background, padding and focus stop — the button is the card, so
+         * neutralize the wrapper (background/padding killed in style.css). */
+        c.getParent().setFocusable(false)
+      }
       content.append(grid)
     }
     stack.setVisibleChildName(groups.length ? 'drives' : 'empty')

@@ -310,6 +310,15 @@ rubberband {
 /* ---- Computer view (drives / "This PC") ---- */
 /* Grouped grid of device cards: full-color icon, name, a thin usage LevelBar
  * and a "N free of M" caption. Unmounted volumes render as dimmed ghosts. */
+/* The FlowBoxChild wrapper draws its own activatable hover behind the card
+ * button's — kill it (and its padding) so only the button highlights. */
+.computer-view flowboxchild,
+.computer-view flowboxchild:hover,
+.computer-view flowboxchild:active,
+.computer-view flowboxchild:selected {
+  background: none;
+  padding: 0;
+}
 .computer-card {
   padding: 10px 12px;
   min-width: 280px;
