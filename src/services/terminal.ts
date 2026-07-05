@@ -23,9 +23,36 @@ const KNOWN_TERMINALS = [
   'gnome-terminal --working-directory=%d -- sh -c %c',
   'konsole --workdir %d -e sh -c %c',
   'alacritty --working-directory %d -e sh -c %c',
+  'kitty --directory %d sh -c %c',
   'foot --working-directory=%d sh -c %c',
   'xterm -e sh -c %c',
 ]
+
+/* Inside a flatpak the emulators live on the HOST: none of the candidates is
+ * in the sandbox PATH (and a sandboxed terminal would be useless anyway), so
+ * every launch is wrapped in `flatpak-spawn --host` — the org.freedesktop.Flatpak
+ * session-bus interface granted in finish-args. Availability must then be
+ * probed on the host with `command -v`: spawning flatpak-spawn itself always
+ * succeeds, so the try/spawn/catch cascade below cannot see which emulator
+ * exists. */
+const IN_FLATPAK = GLib.getenv('FLATPAK_ID') !== null
+
+let hostTerminal: string | null | undefined
+function findHostTerminal(): string | null {
+  const names = KNOWN_TERMINALS.map(t => t.split(' ')[0])
+  try {
+    const proc = Gio.Subprocess.new(
+      ['flatpak-spawn', '--host', 'sh', '-c', `command -v ${names.join(' ')}`],
+      Gio.SubprocessFlags.STDOUT_PIPE | Gio.SubprocessFlags.STDERR_SILENCE)
+    /* out params: [ok, stdout, stderr] or [stdout, stderr] depending on
+     * node-gtk version — take the first string that looks like a path. */
+    const out = proc.communicateUtf8(null, null) as any
+    const stdout = (Array.isArray(out) ? out : [out])
+      .find((x: any) => typeof x === 'string' && x.includes('/')) ?? ''
+    const first = stdout.split('\n').map((s: string) => s.trim()).filter(Boolean)[0]
+    return first ? GLib.pathGetBasename(first) : null
+  } catch { return null }
+}
 
 /* Split a template into argv (respecting quotes) and substitute placeholders.
  * node-gtk returns shellParseArgv's out param as [ok, argv] or argv depending
@@ -45,14 +72,22 @@ function expandTemplate(template: string, dir: string, command: string): string[
 export function spawnTerminal(dir: string, command: string | null, template: string): boolean {
   const keepOpen = 'exec "${SHELL:-sh}"'
   const cmdArg = command ? `${command}; ${keepOpen}` : keepOpen
-  const templates = template.trim() ? [template.trim()] : KNOWN_TERMINALS
+  const custom = template.trim()
+  let templates = custom ? [custom] : KNOWN_TERMINALS
+
+  if (IN_FLATPAK && !custom) {
+    hostTerminal ??= findHostTerminal()
+    const match = KNOWN_TERMINALS.find(t => t.split(' ')[0] === hostTerminal)
+    templates = match !== undefined ? [match] : []
+  }
+
   for (const t of templates) {
     const argv = expandTemplate(t, dir, cmdArg)
     if (!argv || !argv.length) continue
     try {
       const launcher = Gio.SubprocessLauncher.new(Gio.SubprocessFlags.NONE)
       launcher.setCwd(dir)
-      launcher.spawnv(argv)
+      launcher.spawnv(IN_FLATPAK ? ['flatpak-spawn', '--host', `--directory=${dir}`, ...argv] : argv)
       return true
     } catch { /* not installed — try next */ }
   }

@@ -23,10 +23,12 @@
       "finishArgs": [
         "--filesystem=host",
         "--talk-name=org.gtk.vfs.*",
-        "--filesystem=xdg-run/gvfsd"
+        "--filesystem=xdg-run/gvfsd",
+        "--talk-name=org.freedesktop.Flatpak"
       ],
       "lintExceptions": {
-        "finish-args-host-filesystem-access": "Mariner is a file manager; browsing and managing the whole filesystem is its core function, same as other file managers on Flathub."
+        "finish-args-host-filesystem-access": "Mariner is a file manager; browsing and managing the whole filesystem is its core function, same as other file managers on Flathub.",
+        "finish-args-flatpak-spawn-access": "Open in Terminal / the location bar's !!command feature launch the user's terminal emulator on the host in the current folder — host terminals are not visible inside the sandbox."
       }
     }
   },
