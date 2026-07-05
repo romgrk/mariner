@@ -66,7 +66,7 @@ installDiagnostics()
 /* Under node-gtk ESM, app.run() returns immediately; an explicit GLib.MainLoop
  * pumps the GLib loop, and is quit when the last window is removed. */
 const loop = GLib.MainLoop.new(null, false)
-const app = new Adw.Application({ applicationId: 'io.github.romgrk.mariner', flags: 0 })
+const app = new Adw.Application({ applicationId: 'io.github.romgrk.Mariner', flags: 0 })
 
 app.on('activate', () => {
   /* Fires on the primary instance for every launch, including remote ones

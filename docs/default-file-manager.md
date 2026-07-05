@@ -79,5 +79,5 @@ sudo install -Dm644 data/org.freedesktop.FileManager1.service \
 Set the folder handler by hand with:
 
 ```sh
-xdg-mime default io.github.romgrk.mariner.desktop inode/directory
+xdg-mime default io.github.romgrk.Mariner.desktop inode/directory
 ```

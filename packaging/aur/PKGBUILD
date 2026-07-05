@@ -91,14 +91,14 @@ EOF
   chmod 755 "$pkgdir/usr/bin/$_pkgname"
 
   # Desktop integration: launcher entry, scalable icon, AppStream metadata.
-  install -Dm644 data/io.github.romgrk.mariner.desktop \
-    "$pkgdir/usr/share/applications/io.github.romgrk.mariner.desktop"
-  install -Dm644 data/icons/hicolor/scalable/apps/io.github.romgrk.mariner.svg \
-    "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.romgrk.mariner.svg"
-  install -Dm644 data/icons/hicolor/symbolic/apps/io.github.romgrk.mariner-symbolic.svg \
-    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/io.github.romgrk.mariner-symbolic.svg"
-  install -Dm644 data/io.github.romgrk.mariner.metainfo.xml \
-    "$pkgdir/usr/share/metainfo/io.github.romgrk.mariner.metainfo.xml"
+  install -Dm644 data/io.github.romgrk.Mariner.desktop \
+    "$pkgdir/usr/share/applications/io.github.romgrk.Mariner.desktop"
+  install -Dm644 data/icons/hicolor/scalable/apps/io.github.romgrk.Mariner.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/io.github.romgrk.Mariner.svg"
+  install -Dm644 data/icons/hicolor/symbolic/apps/io.github.romgrk.Mariner-symbolic.svg \
+    "$pkgdir/usr/share/icons/hicolor/symbolic/apps/io.github.romgrk.Mariner-symbolic.svg"
+  install -Dm644 data/io.github.romgrk.Mariner.metainfo.xml \
+    "$pkgdir/usr/share/metainfo/io.github.romgrk.Mariner.metainfo.xml"
 
   # org.freedesktop.FileManager1 support. The gjs translator owns the well-known
   # name and turns ShowItems/ShowFolders/ShowItemProperties into `mariner`

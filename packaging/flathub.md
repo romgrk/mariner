@@ -15,7 +15,7 @@ Outputs, all under `dist/flatpak/`:
 | artifact | role |
 |---|---|
 | `Mariner-<version>-flatpak-src.tar.gz` | offline sources Flathub builds from — upload to the GitHub release |
-| `flathub/io.github.romgrk.mariner.yml` | the submission manifest (references the tarball by URL + sha256) |
+| `flathub/io.github.romgrk.Mariner.yml` | the submission manifest (references the tarball by URL + sha256) |
 | `Mariner.flatpak` | local single-file bundle for direct installs / testing |
 
 Then:
@@ -32,7 +32,7 @@ uploaded tarball.
 ## First-time Flathub submission
 
 1. Fork <https://github.com/flathub/flathub>, branch **off `new-pr`**.
-2. Add `dist/flatpak/flathub/io.github.romgrk.mariner.yml` at the repo root.
+2. Add `dist/flatpak/flathub/io.github.romgrk.Mariner.yml` at the repo root.
 3. Open a PR against the `new-pr` branch.
 4. In the PR description, request the linter exception with its
    justification (also recorded in `package.json` →
@@ -40,11 +40,11 @@ uploaded tarball.
    - `finish-args-host-filesystem-access` — Mariner is a file manager;
      browsing and managing the whole filesystem is its core function.
 
-After acceptance Flathub creates `flathub/io.github.romgrk.mariner`; future
+After acceptance Flathub creates `flathub/io.github.romgrk.Mariner`; future
 updates are PRs to that repo bumping the tarball URL + sha256.
 
 ## Updates
 
 New version → bump `package.json` version, add a `<release>` entry to
-`data/io.github.romgrk.mariner.metainfo.xml`, re-run the release steps, PR
+`data/io.github.romgrk.Mariner.metainfo.xml`, re-run the release steps, PR
 the regenerated manifest to the app's Flathub repo.

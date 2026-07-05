@@ -15,7 +15,7 @@
   "main": "src/main.ts",
   "bundle": {
     "name": "Mariner",
-    "id": "io.github.romgrk.mariner",
+    "id": "io.github.romgrk.Mariner",
     "summary": "Browse and manage your files",
     "gtk": 4,
     "flatpak": {

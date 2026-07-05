@@ -9,7 +9,7 @@ import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const APP_ID = 'io.github.romgrk.mariner'
+const APP_ID = 'io.github.romgrk.Mariner'
 
 const DATA_DIR = fileURLToPath(new URL('../../data', import.meta.url))
 /* Launcher shipped by the npm package; absent under system installs, which
