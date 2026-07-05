@@ -3,6 +3,7 @@ import Adw from 'gi:Adw-1'
 import { formatBytes } from '../core/format.ts'
 import { listComputerGroups, itemUsage } from '../services/computer-service.ts'
 import { initVolumeMonitor } from '../services/volume-monitor.ts'
+import { debugLog } from '../core/debug-log.ts' // TEMP-DIAG
 import type { ComputerItem } from '../services/computer-service.ts'
 import type { GFile } from '../core/types.ts'
 
@@ -45,6 +46,7 @@ export function createComputerView(): ComputerView {
   const api: ComputerView = { widget: stack, refresh, onActivate: () => {}, onContextMenu: () => {} }
 
   function refresh(): void {
+    debugLog('diag', 'computer.refresh enter') // TEMP-DIAG
     let c
     while ((c = content.getFirstChild()) !== null) content.remove(c)
     const groups = listComputerGroups()
@@ -71,6 +73,7 @@ export function createComputerView(): ComputerView {
       content.append(grid)
     }
     stack.setVisibleChildName(groups.length ? 'drives' : 'empty')
+    debugLog('diag', 'computer.refresh exit') // TEMP-DIAG
   }
 
   function card(item: ComputerItem): any {
@@ -106,19 +109,6 @@ export function createComputerView(): ComputerView {
     info.append(caption)
     box.append(info)
 
-    /* Eject/unmount button, like the sidebar's device rows. The inner button
-     * claims its clicks, so it doesn't also activate the card. */
-    if (item.canEject || item.canUnmount) {
-      const eject = new Gtk.Button({
-        iconName: 'media-eject-symbolic',
-        halign: Gtk.Align.CENTER, valign: Gtk.Align.CENTER,
-        tooltipText: item.canEject ? 'Eject' : 'Unmount',
-      })
-      eject.addCssClass('flat')
-      eject.on('clicked', () => ejectItem(item))
-      box.append(eject)
-    }
-
     btn.setChild(box)
     btn.on('clicked', () => {
       if (item.file) api.onActivate(item.file)
@@ -135,6 +125,26 @@ export function createComputerView(): ComputerView {
         api.onContextMenu(file, btn, x, y)
       })
       btn.addController(secondary)
+    }
+
+    /* Eject/unmount on removable cards — overlaid on the card, not nested in
+     * it: a GtkButton inside a GtkButton mis-delivers the click to the card
+     * (which navigated instead of ejecting). As an overlay sibling it owns
+     * its clicks outright. */
+    if (item.canEject || item.canUnmount) {
+      box.setMarginEnd(36)
+      const overlay = new Gtk.Overlay()
+      overlay.setChild(btn)
+      const eject = new Gtk.Button({
+        iconName: 'media-eject-symbolic',
+        halign: Gtk.Align.END, valign: Gtk.Align.CENTER,
+        marginEnd: 10,
+        tooltipText: item.canEject ? 'Eject' : 'Unmount',
+      })
+      eject.addCssClass('flat')
+      eject.on('clicked', () => ejectItem(item))
+      overlay.addOverlay(eject)
+      return overlay
     }
 
     return btn
