@@ -3,7 +3,6 @@ import Adw from 'gi:Adw-1'
 import { formatBytes } from '../core/format.ts'
 import { listComputerGroups, itemUsage } from '../services/computer-service.ts'
 import { initVolumeMonitor } from '../services/volume-monitor.ts'
-import { debugLog } from '../core/debug-log.ts' // TEMP-DIAG
 import type { ComputerItem } from '../services/computer-service.ts'
 import type { GFile } from '../core/types.ts'
 
@@ -46,7 +45,6 @@ export function createComputerView(): ComputerView {
   const api: ComputerView = { widget: stack, refresh, onActivate: () => {}, onContextMenu: () => {} }
 
   function refresh(): void {
-    debugLog('diag', 'computer.refresh enter') // TEMP-DIAG
     let c
     while ((c = content.getFirstChild()) !== null) content.remove(c)
     const groups = listComputerGroups()
@@ -73,7 +71,6 @@ export function createComputerView(): ComputerView {
       content.append(grid)
     }
     stack.setVisibleChildName(groups.length ? 'drives' : 'empty')
-    debugLog('diag', 'computer.refresh exit') // TEMP-DIAG
   }
 
   function card(item: ComputerItem): any {
