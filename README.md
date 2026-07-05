@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="data/icons/hicolor/scalable/apps/com.github.romgrk.mariner.svg" alt="Mariner icon" width="96" />
+  <img src="data/icons/hicolor/scalable/apps/io.github.romgrk.mariner.svg" alt="Mariner icon" width="96" />
  
   <h1 align="center">
     Mariner

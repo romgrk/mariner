@@ -13,6 +13,19 @@
     "node": ">=22.18"
   },
   "main": "src/main.ts",
+  "bundle": {
+    "name": "Mariner",
+    "id": "io.github.romgrk.mariner",
+    "summary": "Browse and manage your files",
+    "gtk": 4,
+    "flatpak": {
+      "runtimeVersion": "50",
+      "finishArgs": ["--filesystem=host"],
+      "lintExceptions": {
+        "finish-args-host-filesystem-access": "Mariner is a file manager; browsing and managing the whole filesystem is its core function, same as other file managers on Flathub."
+      }
+    }
+  },
   "bin": {
     "mariner": "bin/mariner"
   },

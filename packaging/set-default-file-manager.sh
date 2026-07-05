@@ -25,7 +25,7 @@
 
 set -eu
 
-DESKTOP_ID=com.github.romgrk.mariner.desktop
+DESKTOP_ID=io.github.romgrk.mariner.desktop
 BUS_NAME=org.freedesktop.FileManager1
 DATA_HOME=${XDG_DATA_HOME:-$HOME/.local/share}
 SERVICE_DIR=$DATA_HOME/dbus-1/services

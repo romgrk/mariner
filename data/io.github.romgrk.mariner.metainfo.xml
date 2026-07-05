@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>com.github.romgrk.mariner</id>
+  <id>io.github.romgrk.mariner</id>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>GPL-3.0-or-later</project_license>
 
@@ -24,7 +24,7 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">com.github.romgrk.mariner.desktop</launchable>
+  <launchable type="desktop-id">io.github.romgrk.mariner.desktop</launchable>
 
   <categories>
     <category>Utility</category>
@@ -39,14 +39,38 @@
   <url type="homepage">https://github.com/romgrk/mariner</url>
   <url type="bugtracker">https://github.com/romgrk/mariner/issues</url>
 
-  <developer id="com.github.romgrk">
+  <developer id="io.github.romgrk">
     <name>Rom Grk</name>
   </developer>
 
   <content_rating type="oars-1.1"/>
 
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Browsing the home folder in grid view, with tags and bookmarks in the sidebar</caption>
+      <image>https://raw.githubusercontent.com/romgrk/mariner/master/docs/hero.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Split view with two folders side by side</caption>
+      <image>https://raw.githubusercontent.com/romgrk/mariner/master/docs/split-view.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>The command palette acts on the selection and jumps to folders</caption>
+      <image>https://raw.githubusercontent.com/romgrk/mariner/master/docs/command-palette.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Disk usage breakdown in the properties dialog</caption>
+      <image>https://raw.githubusercontent.com/romgrk/mariner/master/docs/disk-usage.png</image>
+    </screenshot>
+  </screenshots>
+
   <releases>
-    <release version="0.0.1" date="2026-07-01">
+    <release version="0.0.1" date="2026-07-05">
       <description>
         <p>Initial packaged release.</p>
       </description>
