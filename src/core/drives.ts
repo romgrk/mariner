@@ -96,6 +96,34 @@ export function listPartitions(): Partition[] {
   return out
 }
 
+/* Filesystem type of the mount containing `path` — longest mount-point match
+ * over /proc/mounts, '' when unknown. */
+export function fsTypeForPath(path: string): string {
+  let text = ''
+  try { text = readFileSync('/proc/mounts', 'utf8') } catch { return '' }
+  let best = ''
+  let bestLen = -1
+  for (const line of text.split('\n')) {
+    const f = line.split(' ')
+    if (f.length < 3) continue
+    const mountPath = unescapeMount(f[1])
+    if (mountPath.length <= bestLen) continue
+    if (path === mountPath || path.startsWith(mountPath.endsWith('/') ? mountPath : mountPath + '/')) {
+      best = f[2]
+      bestLen = mountPath.length
+    }
+  }
+  return best
+}
+
+/* True when `path` lives on a filesystem whose metadata operations can stall
+ * for seconds behind other I/O — a single-threaded FUSE daemon (ntfs-3g, the
+ * gvfs fuse bridge) or a network filesystem. Callers avoid main-thread
+ * blocking calls (the sync inotify attach) and whole-tree scans (du) there. */
+export function isSlowFs(path: string): boolean {
+  return /^(fuse|nfs|cifs|smb|9p|afs)/.test(fsTypeForPath(path))
+}
+
 /* Query a mounted filesystem's live usage. Rejects if the path is unreachable. */
 export async function diskUsage(mountPath: string): Promise<DiskUsage> {
   const s = await statfs(mountPath)

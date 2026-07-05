@@ -4,6 +4,7 @@ import { mkdirSync } from 'node:fs'
 import { EventEmitter } from '../core/emitter.ts'
 import { ProcessStream } from '../core/process-stream.ts'
 import { setDirSizeLookup, setDirSizePending } from '../core/format.ts'
+import { isSlowFs } from '../core/drives.ts'
 
 /* Recursive folder sizes for the list view's Size column (opt-in, see
  * Preferences → Views). Finder's "Calculate all sizes", roughly.
@@ -96,6 +97,9 @@ export class DirSizeService extends EventEmitter {
     if (!this.enabled) return
     const now = Date.now()
     this._queue = paths.filter(p => {
+      /* du on a single-threaded FUSE daemon (ntfs-3g) saturates it for
+       * minutes, queueing every other operation on the volume behind it. */
+      if (isSlowFs(p)) return false
       const entry = this._get(p)
       if (entry && now - entry.scannedAt < this.ttlMs) return false
       for (const root of this._running) if (isUnder(p, root)) return false

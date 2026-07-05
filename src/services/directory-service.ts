@@ -3,6 +3,7 @@ import GLib from 'gi:GLib-2.0'
 import { EventEmitter } from '../core/emitter.ts'
 import { ATTRS } from '../core/gio.ts'
 import { isArchiveLocation } from '../core/archive-uri.ts'
+import { isSlowFs } from '../core/drives.ts'
 import type { GFile } from '../core/types.ts'
 
 const BATCH = 64
@@ -76,6 +77,13 @@ export class DirectoryService extends EventEmitter {
 
   _watch(dir: GFile): void {
     this._unwatch()
+    /* monitorDirectory is sync-only and its inotify attach resolves the path
+     * through the filesystem: on a busy single-threaded FUSE daemon (ntfs-3g)
+     * or a network fs that lookup queues behind other I/O for seconds,
+     * freezing the UI at navigation time. Change events there are unreliable
+     * anyway — skip the watch and rely on manual reload. */
+    const path = dir.getPath()
+    if (path != null && isSlowFs(path)) return
     try {
       this.monitor = dir.monitorDirectory(Gio.FileMonitorFlags.WATCH_MOVES, null)
       this.monitor.on('changed', () => {
