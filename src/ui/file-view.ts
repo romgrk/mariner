@@ -5,7 +5,7 @@ import Gdk from 'gi:Gdk-4.0'
 import GLib from 'gi:GLib-2.0'
 import { FILE_INFO_TYPE, uriOf } from '../core/gio.ts'
 import { displayName, isDirectory, formatBytes } from '../core/format.ts'
-import { makeComparator } from '../core/comparator.ts'
+import { makeComparator, sortCache } from '../core/comparator.ts'
 import type { Comparator } from '../core/comparator.ts'
 import { gridFactory, nameColumn, nameCellFactory, metaColumn, metaFactory } from './cells.ts'
 import { tagsService } from '../services/tags-service.ts'
@@ -26,6 +26,18 @@ const SPINNER_DELAY = 300
 /* Grace period before the floating "Searching…" bar appears, so a search that
  * finishes near-instantly never flashes it (mirrors nautilus's loading delay). */
 const SEARCH_BAR_DELAY = 200
+/* Streamed batches are buffered and applied to the store on this cadence. Every
+ * apply replaces the whole model (see _bulkInsertSorted), so applying per
+ * enumerator batch made large folders pay ~80 merges + items-changed storms; a
+ * coalesced apply pays a handful. The first batch of a load skips the buffer so
+ * content still appears instantly. */
+const INSERT_COALESCE_MS = 80
+/* A model replace costs O(rows), so intermediate applies get pricier as the
+ * listing grows. Past this size, a directory load stops streaming into the view
+ * and applies the remainder in one final flush at finishLoading — the user is
+ * looking at the (already-full) first screens anyway. Search results are exempt:
+ * they trickle in over seconds and must keep appearing as they arrive. */
+const STREAM_ROWS_MAX = 1000
 
 /* Chord modifiers we discriminate on (lock/scroll bits are ignored). */
 const MODIFIER_MASK = Gdk.ModifierType.CONTROL_MASK | Gdk.ModifierType.ALT_MASK
@@ -63,6 +75,16 @@ export class FileView {
   selection: any
   iconSize = 64
   all: Entry[] = []
+  /* JS mirror of the store's current contents, in order. The store is only ever
+   * mutated through methods of this class that keep the two in sync; reading
+   * rows back through store.getItem() is a marshalled native call per row,
+   * which made every streamed batch O(total-so-far) native calls. */
+  rows: GFileInfo[] = []
+  _insertQueue: GFileInfo[] = []
+  _flushTimer = 0
+  /* Set when the first batch of a navigation has renewed `all` but the store
+   * still shows the old folder; consumed by the flush that swaps it out. */
+  _storeResetPending = false
   filter: (info: GFileInfo) => boolean = () => true
   cmp: Comparator = makeComparator('name', false)
   onActivate: ActivateHandler = () => {}
@@ -190,6 +212,8 @@ export class FileView {
      * scroll offset; a navigation pins to the top. */
     this._restoreScroll = this._pinTop ? -1 : this._currentScroll()
     this._loading = true
+    this._clearQueue()   /* inserts still buffered from an interrupted load are obsolete */
+    this._storeResetPending = false   /* an interrupted navigation's pending swap is moot */
     if (this._pinTop) { this._merge = false; this._pendingReset = true }
     else { this._pendingReset = false; this._beginMerge() }
     this._armSpinner()
@@ -197,13 +221,15 @@ export class FileView {
 
   /* ---- navigation (reset) ---- */
 
-  /* Clear the previous listing right before the first item of the new one is
-   * shown, so the swap is a single step (old → new) with no intermediate blank.
-   * A no-op after the first call of a load. */
+  /* Clear the previously *displayed* listing right before the first insert of
+   * the new one, so the swap is a single step (old → new) with no intermediate
+   * blank. `all` is NOT touched here: inserts are buffered, so by flush time it
+   * already holds the new load's entries — it resets in addEntries instead,
+   * before anything is pushed (see _pendingReset vs _storeResetPending). */
   _resetIfPending(): void {
-    if (!this._pendingReset) return
-    this._pendingReset = false
-    this.all = []
+    if (!this._storeResetPending) return
+    this._storeResetPending = false
+    this.rows = []
     this.store.removeAll()
   }
 
@@ -216,8 +242,7 @@ export class FileView {
     this._seen = new Set()
     this._storeKeys = new Set()
     this._incoming = []
-    const n = this.store.getNItems()
-    for (let i = 0; i < n; i++) this._storeKeys!.add(this.store.getItem(i)._key)
+    for (const info of this.rows) this._storeKeys!.add(info._key)
   }
 
   _mergeEntries(pairs: Entry[]): void {
@@ -232,12 +257,7 @@ export class FileView {
       toInsert.push(info)
       this._storeKeys!.add(info._key)
     }
-    this._bulkInsertSorted(toInsert)
-    if (this._loading && this.store.getNItems() > 0) {
-      this._cancelSpinner()
-      this.stack.setVisibleChildName('results')
-      this._applyPending()
-    }
+    this._queueInsert(toInsert)
   }
 
   /* Sweep: drop the rows that weren't in the new result set, adopt the new full
@@ -266,19 +286,22 @@ export class FileView {
    * otherwise stay visible while the new search streams in. The following
    * beginLoading snapshots the now-empty store, so nothing stale can survive. */
   clearResults(): void {
+    this._clearQueue()
     this.all = []
+    this.rows = []
     this.store.removeAll()
   }
 
   /* Remove every row for which `shouldRemove` is true, coalescing contiguous
    * runs into one splice each (one items-changed) so bulk removals stay cheap. */
   _removeWhere(shouldRemove: (info: any) => boolean): void {
-    let i = this.store.getNItems() - 1
+    let i = this.rows.length - 1
     while (i >= 0) {
-      if (!shouldRemove(this.store.getItem(i))) { i--; continue }
+      if (!shouldRemove(this.rows[i])) { i--; continue }
       const hi = i
-      while (i >= 0 && shouldRemove(this.store.getItem(i))) i--
+      while (i >= 0 && shouldRemove(this.rows[i])) i--
       this.store.splice(i + 1, hi - i, [])   // remove rows [i+1 .. hi]
+      this.rows.splice(i + 1, hi - i)
     }
   }
 
@@ -296,6 +319,7 @@ export class FileView {
         if (!this._pendingReset) return false
         this._pendingReset = false
         this.all = []
+        this.rows = []
         this.store.removeAll()
         this.stack.setVisibleChildName('loading')
       } else if (this.store.getNItems() === 0) {
@@ -316,24 +340,62 @@ export class FileView {
   _stamp(info: GFileInfo, file: GFile): void {
     info._file = file
     info._key = uriOf(file)
+    sortCache(info)   /* pre-warm the comparison keys (see comparator.ts) */
     tagsService.heal(info, file)
   }
 
   addEntries(pairs: Entry[]): void {
     if (this._merge) { this._mergeEntries(pairs); return }
-    this._resetIfPending()
+    /* First batch of a navigation: start the retained dataset fresh NOW (before
+     * pushing), and leave the displayed rows to be swapped at the flush. */
+    if (this._pendingReset) {
+      this._pendingReset = false
+      this._storeResetPending = true
+      this.all = []
+    }
     const toInsert: GFileInfo[] = []
     for (const { info, file } of pairs) {
       this._stamp(info, file)
       this.all.push({ info, file })
       if (this.filter(info)) toInsert.push(info)
     }
-    this._bulkInsertSorted(toInsert)
+    this._queueInsert(toInsert)
+  }
+
+  /* Buffer a batch and apply on the coalescing cadence. The first content of a
+   * load applies immediately: for a navigation the store still shows the OLD
+   * folder until then (_pendingReset), and the reset must land in the same step
+   * as the first insert so the swap is old → new with no blank in between. */
+  _queueInsert(infos: GFileInfo[]): void {
+    this._insertQueue.push(...infos)
+    if (this._storeResetPending || this.rows.length === 0) { this._flushInserts(); return }
+    if (!this._insertQueue.length || this._flushTimer) return
+    if (!this._merge && this._loading && this.rows.length >= STREAM_ROWS_MAX) return
+    this._flushTimer = GLib.timeoutAdd(GLib.PRIORITY_DEFAULT, INSERT_COALESCE_MS, () => {
+      this._flushTimer = 0
+      this._flushInserts()
+      return false
+    })
+  }
+
+  _flushInserts(): void {
+    if (this._flushTimer) { GLib.sourceRemove(this._flushTimer); this._flushTimer = 0 }
+    this._resetIfPending()
+    if (this._insertQueue.length) {
+      const infos = this._insertQueue
+      this._insertQueue = []
+      this._bulkInsertSorted(infos)
+    }
     if (this._loading && this.store.getNItems() > 0) {
       this._cancelSpinner()
       this.stack.setVisibleChildName('results')
       this._applyPending()
     }
+  }
+
+  _clearQueue(): void {
+    if (this._flushTimer) { GLib.sourceRemove(this._flushTimer); this._flushTimer = 0 }
+    this._insertQueue = []
   }
 
   /* Signal an upcoming directory change: pin the view to the top with the first
@@ -375,10 +437,9 @@ export class FileView {
    * shift their positions. */
   _applyReveal(uris: Set<string> | null = this._revealUris): void {
     if (!uris || this.stack.getVisibleChildName() !== 'results') return
-    const n = this.store.getNItems()
     let first = -1
-    for (let i = 0; i < n; i++) {
-      if (!uris.has(this.store.getItem(i)._key)) continue
+    for (let i = 0; i < this.rows.length; i++) {
+      if (!uris.has(this.rows[i]._key)) continue
       this.selection.selectItem(i, first < 0)
       if (first < 0) first = i
     }
@@ -419,13 +480,19 @@ export class FileView {
   }
 
   finishLoading(emptyKind: EmptyKind = 'folder'): void {
+    this._flushInserts()   /* apply still-buffered batches before finalising */
     this._loading = false
     this._cancelSpinner()
-    /* Finalise the load: merge → sweep the rows that are gone; reset → if
-     * nothing arrived at all (empty folder / no matches), drop the old listing
-     * now so _settle can show the empty state instead of stale items. */
+    /* Finalise the load: merge → sweep the rows that are gone; navigation where
+     * nothing arrived at all (empty folder) → drop the old listing now so
+     * _settle can show the empty state instead of stale items. */
     if (this._merge) this._endMerge()
-    else this._resetIfPending()
+    else if (this._pendingReset) {
+      this._pendingReset = false
+      this.all = []
+      this.rows = []
+      this.store.removeAll()
+    }
     this._emptyKind = emptyKind
     this._settle()
     /* Re-assert the final position once more after the full model has been laid
@@ -450,20 +517,26 @@ export class FileView {
   showError(message: string): void {
     this._loading = false
     this._cancelSpinner()
+    this._clearQueue()
     this._pendingReset = false
+    this._storeResetPending = false
     this._merge = false
     this._seen = this._storeKeys = this._incoming = null
     this.all = []
+    this.rows = []
     this.store.removeAll()
     this._errorPage.setDescription(message || 'The location could not be read.')
     this.stack.setVisibleChildName('error')
   }
 
-  /* Re-apply filter + sort to the retained dataset (on pref change). */
+  /* Re-apply filter + sort to the retained dataset (on pref change). Queued
+   * inserts are already part of `all`, so the queue is dropped, not flushed.
+   * One splice, not per-item appends — each append is a full items-changed. */
   rebuild(): void {
-    this.store.removeAll()
+    this._clearQueue()
     const sorted = this.all.map(p => p.info).filter(this.filter).sort(this.cmp)
-    for (const info of sorted) this.store.append(info)
+    this.store.splice(0, this.store.getNItems(), sorted)
+    this.rows = sorted
     if (!this._loading) this._settle()
   }
 
@@ -651,9 +724,7 @@ export class FileView {
   _bulkInsertSorted(infos: GFileInfo[]): void {
     if (infos.length === 0) return
     infos.sort(this.cmp)
-    const n = this.store.getNItems()
-    const cur: GFileInfo[] = new Array(n)
-    for (let k = 0; k < n; k++) cur[k] = this.store.getItem(k)
+    const cur = this.rows, n = cur.length
     /* Merge the two sorted runs (existing rows keep their order; a new row lands
      * after existing rows it ties with, matching the old per-item insert). */
     const merged: GFileInfo[] = new Array(n + infos.length)
@@ -663,6 +734,7 @@ export class FileView {
     while (b < infos.length) merged[m++] = infos[b++]
     const selected = this._selectedKeys()
     this.store.splice(0, n, merged)
+    this.rows = merged
     if (selected) this._reselectKeys(selected)
   }
 
@@ -671,14 +743,12 @@ export class FileView {
   _selectedKeys(): Set<string> | null {
     if (Number(this.selection.getSelection().getSize()) === 0) return null
     const keys = new Set<string>()
-    const n = this.store.getNItems()
-    for (let i = 0; i < n; i++) if (this.selection.isSelected(i)) keys.add(this.store.getItem(i)._key)
+    for (let i = 0; i < this.rows.length; i++) if (this.selection.isSelected(i)) keys.add(this.rows[i]._key)
     return keys
   }
 
   _reselectKeys(keys: Set<string>): void {
-    const n = this.store.getNItems()
-    for (let i = 0; i < n; i++) if (keys.has(this.store.getItem(i)._key)) this.selection.selectItem(i, false)
+    for (let i = 0; i < this.rows.length; i++) if (keys.has(this.rows[i]._key)) this.selection.selectItem(i, false)
   }
 
   _activate(pos: number): void {
