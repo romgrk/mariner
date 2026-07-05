@@ -14,8 +14,7 @@ import type { GFile, Place } from '../core/types.ts'
 const SECTION_DEFAULT = 0
 const SECTION_BOOKMARKS = 1
 const SECTION_TAGS = 2
-const SECTION_COMPUTER = 3
-const SECTION_MOUNTS = 4
+const SECTION_MOUNTS = 3
 
 const TAGS_EXPANDED_KEY = 'sidebar-tags-expanded'
 
@@ -198,10 +197,11 @@ export function createSidebar(
     while ((c = list.getFirstChild()) !== null) list.remove(c)
     rows = []
     prevSection = -1
+    /* Computer leads the sidebar (nautilus-my-computer style), above Recent. */
+    if (!isHidden('computer')) addRow(getComputer(), SECTION_DEFAULT)
     for (const p of getPlaces()) if (!isHidden(p.id!)) addRow(p, SECTION_DEFAULT)
     if (!isHidden('bookmarks')) for (const p of getBookmarks()) addRow(p, SECTION_BOOKMARKS)
     if (!isHidden('tags')) addTagRows()
-    if (!isHidden('computer')) addRow(getComputer(), SECTION_COMPUTER)
     if (!isHidden('devices')) for (const p of getDevices()) addRow(p, SECTION_MOUNTS)
     applyActive()
   }

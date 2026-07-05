@@ -22,13 +22,13 @@ const SPECIAL: Array<[any, string, string]> = [
  * sections. Drives the Preferences dialog's Sidebar group and the validation
  * of the persisted hidden-list (view-prefs.ts). */
 export const SIDEBAR_ITEMS: Array<{ id: string; label: string }> = [
+  { id: 'computer', label: 'Computer' },
   { id: 'recent', label: 'Recent' },
   { id: 'home', label: 'Home' },
   ...SPECIAL.map(([, label]) => ({ id: label.toLowerCase(), label })),
   { id: 'trash', label: 'Trash' },
   { id: 'bookmarks', label: 'Bookmarks' },
   { id: 'tags', label: 'Tags' },
-  { id: 'computer', label: 'Computer' },
   { id: 'devices', label: 'Devices' },
 ]
 

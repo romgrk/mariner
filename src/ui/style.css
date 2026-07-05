@@ -308,31 +308,33 @@ rubberband {
 }
 
 /* ---- Computer view (drives / "This PC") ---- */
-/* Each drive is a flat, full-width row: icon, name, mount point, a disk-usage
- * bar and a "N free of M" caption. */
-.computer-tile {
+/* Grouped grid of device cards: full-color icon, name, a thin usage LevelBar
+ * and a "N free of M" caption. Unmounted volumes render as dimmed ghosts. */
+.computer-card {
   padding: 10px 12px;
+  min-width: 280px;
 }
-.computer-tile-name {
+.computer-card-name {
   font-weight: bold;
 }
-.computer-tile-desc {
-  font-size: 0.9em;
+.computer-card-ghost {
+  opacity: 0.55;
 }
-.computer-tile-bar {
-  margin-top: 6px;
-  margin-bottom: 1px;
-}
-.computer-tile-bar trough,
-.computer-tile-bar progress {
+.computer-card-bar trough,
+.computer-card-bar block {
   min-height: 6px;
+  min-width: 6px;
   border-radius: 3px;
 }
-/* Nearly-full drives read as a warning. */
-.computer-tile-bar-full progress {
-  background-color: @error_color;
+/* Fill-style offsets (set in computer.ts): accent until 90%, then warning,
+ * then critical — the stock LevelBar offsets are battery-style (low = red). */
+.computer-card-bar block.filled.fill-warning {
+  background-color: @warning_bg_color;
 }
-.computer-tile-usage {
+.computer-card-bar block.filled.fill-critical {
+  background-color: @error_bg_color;
+}
+.computer-card-caption {
   font-size: 0.9em;
 }
 
