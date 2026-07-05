@@ -65,9 +65,13 @@ export function installDiagnostics(): void {
    * dispatches node-level signal handlers and timers — never gets a turn.
    * A process.on('SIGTERM') here would never fire AND would swallow the
    * default terminate disposition, making the app unkillable by TERM. */
+  /* glib ≥2.88 introspects g_unix_signal_add_full as signalAdd; older
+   * runtimes (GNOME 49 flatpak = glib 2.86) expose it as signalAddFull.
+   * Same (priority, signum, callback) signature either way. */
+  const signalAdd = GLibUnix.signalAdd ?? GLibUnix.signalAddFull
   const SIGNALS = { SIGHUP: 1, SIGINT: 2, SIGTERM: 15 }
   for (const [sig, num] of Object.entries(SIGNALS))
-    GLibUnix.signalAdd(GLib.PRIORITY_DEFAULT, num, () => { debugLog('signal', sig); realExit(128 + num) })
+    signalAdd(GLib.PRIORITY_DEFAULT, num, () => { debugLog('signal', sig); realExit(128 + num) })
 
   /* If the log ends on a heartbeat, the process was killed without warning;
    * a climbing RSS before the end points at the OOM killer. */
