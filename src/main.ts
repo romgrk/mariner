@@ -14,10 +14,12 @@ import type { GFile } from './core/types.ts'
 /* GTK ≥ 4.22 defaults to the Vulkan renderer, which on NVIDIA-ICD dual-GPU
  * laptops renders on the discrete GPU — waking it from runtime suspend (~1s on
  * every launch) and pinning it awake for the app's lifetime. Prefer GL, which
- * follows the compositor's device. node-gtk sets the same default at require
- * time; this covers installs on older node-gtk releases. Read at renderer
- * creation (first window realize), so setting it here is early enough. */
-process.env.GSK_RENDERER ??= 'ngl'
+ * follows the compositor's device. node-gtk sets the same default from its
+ * register hook; this covers installs on older node-gtk releases. Read at
+ * renderer creation (first window realize), so setting it here is early
+ * enough. ('gl' is the renderer's name since GTK 4.18; 'ngl' still works but
+ * warns on stderr.) */
+process.env.GSK_RENDERER ??= 'gl'
 
 /* Desktop-integration commands run and exit before the GApplication is created,
  * so they never activate a running instance. */
