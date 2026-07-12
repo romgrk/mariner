@@ -191,6 +191,7 @@ src/
   window.ts              AppWindow: shell assembly, GAction wiring, ops queue, conflicts
   accels.ts              ACCELS table + formatAccel/accelHint
   main.ts                Adw.Application, accelerators, GLib.MainLoop lifecycle;
+                         GApplication command-line forwarding (including cwd);
                          CLI modes: --select / --properties (FileManager1 reveal)
 bin/mariner              installed launcher, sh shim (exec node --import hooks + main.ts)
 data/filemanager1.js     gjs D-Bus translator hosting org.freedesktop.FileManager1

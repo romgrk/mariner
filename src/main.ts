@@ -1,8 +1,7 @@
 import Adw from 'gi:Adw-1'
+import Gio from 'gi:Gio-2.0'
 import GLib from 'gi:GLib-2.0'
-import { statSync } from 'node:fs'
-import { resolve, dirname } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { resolve } from 'node:path'
 import { AppWindow } from './window.ts'
 import { debugLog, installDiagnostics } from './core/debug-log.ts'
 import { fileForPath, fileForUri } from './core/gio.ts'
@@ -36,28 +35,29 @@ if (command === '--install-desktop-entry' || command === '--uninstall-desktop-en
  * the D-Bus service (data/filemanager1.js). */
 type Mode = 'open' | 'select' | 'properties'
 
-function parseInvocation(): { mode: Mode; targets: string[] } {
-  const args = process.argv.slice(2)
+function parseInvocation(args: string[]): { mode: Mode; targets: string[] } {
   if (args[0] === '--select') return { mode: 'select', targets: args.slice(1) }
   if (args[0] === '--properties') return { mode: 'properties', targets: args.slice(1) }
   return { mode: 'open', targets: args }
 }
 
-/* A CLI argument may be a path or a URI (file://, trash://, …). */
-function fileForArg(arg: string): GFile {
-  return /^[a-z][a-z0-9+.-]*:\/\//i.test(arg) ? fileForUri(arg) : fileForPath(resolve(arg))
+/* A CLI argument may be a path or a URI (file://, trash://, …). Relative paths
+ * belong to the invoking process, which may not share the primary instance's
+ * working directory. */
+function fileForArg(arg: string, cwd: string): GFile {
+  return /^[a-z][a-z0-9+.-]*:\/\//i.test(arg) ? fileForUri(arg) : fileForPath(resolve(cwd, arg))
 }
 
-/* Initial location for `open` mode: a folder path or file:// URI, else HOME.
- * A file argument opens its parent directory. */
-function startPath(): string {
-  const arg = process.argv[2]
-  if (!arg) return HOME
+/* Initial location for `open` mode. A file argument opens its parent folder. */
+function startFile(arg: string | undefined, cwd: string): GFile {
+  if (!arg) return fileForPath(HOME)
   try {
-    const abs = resolve(arg.startsWith('file://') ? fileURLToPath(arg) : arg)
-    return statSync(abs).isDirectory() ? abs : dirname(abs)
+    const file = fileForArg(arg, cwd)
+    return file.queryFileType(Gio.FileQueryInfoFlags.NONE, null) === Gio.FileType.DIRECTORY
+      ? file
+      : file.getParent() ?? file
   } catch {
-    return HOME
+    return fileForPath(HOME)
   }
 }
 
@@ -66,22 +66,31 @@ installDiagnostics()
 /* Under node-gtk ESM, app.run() returns immediately; an explicit GLib.MainLoop
  * pumps the GLib loop, and is quit when the last window is removed. */
 const loop = GLib.MainLoop.new(null, false)
-const app = new Adw.Application({ applicationId: 'io.github.romgrk.Mariner', flags: 0 })
+const app = new Adw.Application({
+  applicationId: 'io.github.romgrk.Mariner',
+  flags: Gio.ApplicationFlags.HANDLES_COMMAND_LINE,
+})
+let initialized = false
 
-app.on('activate', () => {
-  /* Fires on the primary instance for every launch, including remote ones
-   * (single-instance GApplication), so repeats here mean another invocation
-   * — xdg-open, the FileManager1 service, a test run — reached this process. */
-  debugLog('activate', `argv=${JSON.stringify(process.argv.slice(2))}`)
-  loadStyles()
-  for (const [action, accels] of Object.entries(ACCELS))
-    app.setAccelsForAction(action, accels)
+app.on('command-line', (commandLine: any) => {
+  /* Unlike process.argv, ApplicationCommandLine carries the arguments and cwd
+   * of every invocation, including launches forwarded to a running primary
+   * instance. Its first argument is the executable name. */
+  const args = (commandLine.getArguments() as string[]).slice(1)
+  const cwd = commandLine.getCwd() ?? process.cwd()
+  debugLog('command-line', `argv=${JSON.stringify(args)} cwd=${cwd}`)
+  if (!initialized) {
+    initialized = true
+    loadStyles()
+    for (const [action, accels] of Object.entries(ACCELS))
+      app.setAccelsForAction(action, accels)
+  }
 
-  const { mode, targets } = parseInvocation()
+  const { mode, targets } = parseInvocation(args)
   if (mode === 'open' || targets.length === 0) {
-    new AppWindow(app, fileForPath(startPath()))
+    new AppWindow(app, startFile(targets[0], cwd))
   } else {
-    const uris = targets.map(t => fileForArg(t).getUri())
+    const uris = targets.map(t => fileForArg(t, cwd).getUri())
     /* Start at the first item's parent; revealItems groups the rest and opens
      * further tabs for items living in other folders. */
     const first = fileForUri(uris[0])
@@ -89,7 +98,10 @@ app.on('activate', () => {
     if (mode === 'properties') win.showItemProperties(uris)
     else win.revealItems(uris)
   }
-  loop.run()
+  /* The initial invocation needs to start the explicit GLib loop. A forwarded
+   * invocation is already being dispatched by that loop and must not nest it. */
+  if (!loop.isRunning()) loop.run()
+  return 0
 })
 
 app.on('window-added', () => debugLog('window-added', `count=${app.getWindows().length}`))
@@ -99,4 +111,6 @@ app.on('window-removed', () => {
   if (count === 0) { debugLog('loop-quit', 'last window removed'); loop.quit() }
 })
 
-app.run()
+/* GApplication only forwards arguments it is explicitly given. argv[0] must
+ * be the program name, so omit Node's executable but retain main.ts. */
+app.run(process.argv.slice(1))
